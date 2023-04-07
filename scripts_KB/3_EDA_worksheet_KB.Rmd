@@ -634,7 +634,7 @@ mDat %>%
 
 Let's now see the spread of our read counts (expression counts) per sample  
 
-`ggplot2` only uses one dataframe for it's input - given that we have our expression in eDat and phenotype in pDat, we'll have to combine these dataframes in order for us to visualise our expression by variables  
+`ggplot2` only uses one dataframe for its input - given that we have our expression in eDat and phenotype in pDat, we'll have to combine these dataframes in order for us to visualise our expression by variables  
 
 We'll use the slightly advanced function `pivot_longer` to convert our wide eDat df, into a 'longer' df (when this function is used, R forgets to incorporate the rownames into the new df that we make, and so, if you have rownames, you'll have to convert them into a separate column). 
 
