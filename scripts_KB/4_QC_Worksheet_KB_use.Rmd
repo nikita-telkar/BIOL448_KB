@@ -58,10 +58,10 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE)
 Reading in data:  
 
 ```{r data}
+
  pDat <- read_excel(here::here("data", "KIRC_pDat_replicates_removed.xlsx"))
  eDat <- read_rds(here::here("data", "KIRC_eDat_replicates_removed.RDS"))
  mDat <- read_rds(here::here("data", "KIRC_mDat.RDS"))
- 
  #  summary(mDat)
 
 ```
@@ -275,19 +275,31 @@ eFil_fetal_filtered <- eFil_fetal_sum %>%
 **Now, join the filtered miRNAs from the logical type eFil_fetal df to eDat to get the actual raw expression for all samples**  
 
 ```{r make-efil}
-
-join_cols <- grep("^Rob", names(eFil_fetal_filtered), value = TRUE)
-
-eFil_1_10 <- eFil_fetal_filtered %>% 
-  left_join(eDat, by = join_cols)
-
-eFil_1_10 <- left_join(eFil_fetal_filtered, eDat,by= join_cols)
+# 
+# join_cols <- grep("^Rob", names(eFil_fetal_filtered), value = TRUE)
+# 
+# eFil_1_10 <- eFil_fetal_filtered %>% 
+#   left_join(eDat, by = join_cols)
+# 
+# eFil_1_10 <- left_join(eFil_fetal_filtered, eDat,by= join_cols)
 #both produce the same results
 
 # use left join 
   
   # combine eFil_fetal_filtered to eDat (entire)
-  
+
+eFil_fetal_filtered <- eFil_fetal_filtered %>% 
+  rownames_to_column("miRNA")
+
+
+eDat <- eDat %>% 
+  rownames_to_column("miRNA")
+
+eFil <- eFil_fetal_filtered %>% 
+  dplyr::select (miRNA) %>% 
+  left_join(eDat, by = "miRNA") #  left_join(eDat, by = c("miRNA" = "microRNA))
+
+dim(eFil)
 
 ```
 
@@ -303,10 +315,10 @@ Let's first check which mature miRNAs are duplicated
 
 ```{r dup-mirs}
 #issues with knitting since obj have not yet been created - will ust comment out for now 
-# eFil_1_10 %>% 
-#   separate(mirs, c("precursor", "miRNA"), sep = ":") %>% 
-#   dplyr::count(miRNA) %>% # count the frequency of mature miRNAs
-#   filter(n > 1) # filter to keep only the ones which have a count of more than 1
+eFil_1_10 %>%
+  separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
+  dplyr::count(miRNA) %>% # count the frequency of mature miRNAs
+  filter(n > 1) # filter to keep only the ones which have a count of more than 1
 
 ```
 
@@ -314,28 +326,28 @@ So, we can see that there are 78 mature miRNAs (within our fetal filtered miRNAs
 
 
 ```{r fetal-fil-mature}
-# 
-# eFil <- eFil_1_10 %>%
-#   separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
-# 
-#   mutate(Sum = rowSums(select_if(., is.numeric))) %>%
-#   # here I'm specifying to select only the numeric columns, because our first columns are the miRNA names
-# 
-#   group_by(miRNA) %>%
-#   # grouping by the mature miRNA names
-# 
-#   slice_max(Sum) %>%
-#   # within each mature miRNA group, only keeping the ones which have the highest value in Sum
-# 
-#   dplyr::select(-Sum, -precursor) %>%
-#   # removing the Sum and miRNA precursor column (as we have other dfs we can match to find out the precursor if needed)
-# 
-#   distinct(miRNA, .keep_all = TRUE) %>%
-#   # remove duplicates within the miRNA column
-# 
-#   column_to_rownames("miRNA")
-# 
-# dim(eFil)
+
+eFil <- eFil_1_10 %>%
+  separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
+
+  mutate(Sum = rowSums(select_if(., is.numeric))) %>%
+  # here I'm specifying to select only the numeric columns, because our first columns are the miRNA names
+
+  group_by(miRNA) %>%
+  # grouping by the mature miRNA names
+
+  slice_max(Sum) %>%
+  # within each mature miRNA group, only keeping the ones which have the highest value in Sum
+
+  dplyr::select(-Sum, -precursor) %>%
+  # removing the Sum and miRNA precursor column (as we have other dfs we can match to find out the precursor if needed)
+
+  distinct(miRNA, .keep_all = TRUE) %>%
+  # remove duplicates within the miRNA column
+
+  column_to_rownames("miRNA")
+
+dim(eFil)
 
 ```
 
