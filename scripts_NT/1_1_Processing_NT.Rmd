@@ -1,0 +1,448 @@
+---
+title: "KIRC eDat and pDat Processing"
+author: Nikita Telkar
+date: February 2023
+output: 
+  html_document: 
+    keep_md: yes 
+    toc: true  
+    toc_depth: 4
+    toc_float: 
+      collapsed: false 
+      smooth_scroll: true
+    theme: flatly  
+    highlight: haddock
+---
+
+## 0.0  Introduction  
+
+The formatting of eDat and pDat was throwing a few errors, so I decided to clean it up and make them ready-to-use for Katya  
+
+***  
+
+## 1.0 Data and Packages
+
+```{r packages}
+
+library(here)
+library(readxl)
+library(tidyverse)
+library(splitstackshape)
+library(openxlsx)
+
+```
+
+
+```{r data}
+
+# eDat and pDat saved from Katya's 1_Processing script  
+
+eDat <- readRDS("KIRC_eDat.RDS")
+pDat <- read_excel("KIRC_pDat.xlsx")
+
+tcga_meta <- read.delim("~/Library/CloudStorage/GoogleDrive-nikita.telkar3@gmail.com/My Drive/UBC Docs/R/all_TCGA_samples_metadata_tabdelim.txt")
+
+tcga_kirc <- tcga_meta %>% 
+  filter(investigation == "TCGA-KIRC")
+
+```
+
+## 2.0 Adding TCGA Sample Code Explanations  
+
+I'll make a separate column within pDat to add the [vial](https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/) and [analyte](https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/portion-analyte-codes) codes  
+
+```{r tcga-sample-codes}
+
+pDat_kirc <- pDat %>% 
+  filter(!(Condition == "Fetal")) %>% 
+  dplyr::select(Sample, Aliquot_ID, fastq_name) %>% 
+  mutate(Aliquot = Aliquot_ID)
+
+pDat_kirc <- cSplit(pDat_kirc, "Aliquot", sep = "-")
+
+head(pDat_kirc)
+
+# splitting Aliquot_4 into numeric sample code and letter vial, and Aliquot_5 into sample portion and analyte type
+
+pDat_kirc <- pDat_kirc %>% 
+  mutate(Vial = Aliquot_4,
+         Analyte = Aliquot_5)
+
+# only keeping the last letter for both columns
+pDat_kirc$Vial <- str_sub(pDat_kirc$Vial, -1)
+pDat_kirc$Analyte <- str_sub(pDat_kirc$Analyte, -1)
+
+# renaming columns according to TCGA nomenclature
+pDat_kirc <- pDat_kirc %>% 
+  rename("Tissue_Source_Site" = "Aliquot_2",
+         "Participant" = "Aliquot_3",
+         "Sample_code" = "Aliquot_4",
+         "Portion" = "Aliquot_5")
+
+# removing columns signifying TCGA, Plate, and Centre
+pDat_kirc <- pDat_kirc %>% 
+  dplyr::select(-c(Aliquot_1, Aliquot_6, Aliquot_7))
+
+# removing last letter to keep only numeric code
+pDat_kirc$Sample_code <- str_sub(pDat_kirc$Sample_code, end = -2)
+pDat_kirc$Portion <- str_sub(pDat_kirc$Portion, end = -2)
+
+# giving explanations of the TCGA codes
+pDat_kirc <- pDat_kirc %>% 
+  mutate(Sample_code_explanation = case_when(
+    Sample_code == "01" ~ "Primary Solid Tumor",
+    Sample_code == "11" ~ "Solid Tissue Normal")) %>% 
+  mutate(Analyte_explanation = case_when(
+    Analyte == "R" ~ "RNA",
+    Analyte == "T" ~ "Total_RNA"
+  ))
+
+```
+
+
+```{r analyte-t}
+
+pDat_kirc %>% 
+  dplyr::count(Analyte)
+
+analyte_T <- pDat_kirc %>% 
+  filter(Analyte == "T")
+# all are tumour samples -- will join to tcga meta to check if anything pops up  
+
+analyte_T <- analyte_T %>% 
+  dplyr::select(Aliquot_ID) %>% 
+  left_join(tcga_kirc, by = c("Aliquot_ID" = "aliquot_id"))
+
+# maybe experimental stratergy -- RNA-Seq vs miRNA-seq?  
+
+analytes <- pDat_kirc %>% 
+  dplyr::select(Aliquot_ID, Analyte) %>% 
+  left_join(tcga_kirc, by = c("Aliquot_ID" = "aliquot_id")) %>% 
+  distinct(Aliquot_ID, .keep_all = TRUE)
+
+table(analytes$Analyte, analytes$experimental_strategy)
+
+# nope - all are miRNA-Seq with Centre code 13 = BCGSC. Total RNA seq centre code is 07 which is University of North Carolina
+
+```
+
+Okay, no idea why some are RNA and some are Total RNA or what the difference between them is  
+
+*** 
+
+## 3.0 Mistmatched Sample and FASTQ file names  
+
+A few of the samples have a different plate ID, but the overall sample names are correct - I'll check that they're all matching  
+
+```{r sample-name-mismatch}
+
+pDat_kirc <- pDat_kirc %>% 
+  mutate(sample_name = Aliquot_ID,
+         file_name = fastq_name,
+         file_name = str_replace_all(file_name, "trimmed_", ""),
+         file_name = str_replace_all(file_name, "_mirna", ""),
+         file_name = str_trim(file_name))
+
+pDat_kirc_mismatch <- pDat_kirc
+
+pDat_kirc_mismatch$sample_name <- str_sub(pDat_kirc_mismatch$sample_name, end = -9)
+pDat_kirc_mismatch$file_name <- str_sub(pDat_kirc_mismatch$file_name, end = -9)
+
+pDat_kirc_mismatch <- pDat_kirc_mismatch %>% 
+  mutate(names_match = case_when(
+    sample_name == file_name ~ "Yes", 
+    TRUE ~ "No"
+  ))
+
+pDat_kirc_mismatch %>% 
+  dplyr::count(names_match)
+
+sample_name_mismatch <- pDat_kirc_mismatch %>% 
+  filter(names_match == "No")
+
+
+# checking if overall sample names match
+pDat_kirc_mismatch <- pDat_kirc_mismatch %>% 
+  mutate(sample_name_codes = sample_name,
+         file_name_codes = file_name)
+
+pDat_kirc_mismatch$sample_name <- str_sub(pDat_kirc_mismatch$sample_name, end = -9)
+pDat_kirc_mismatch$file_name <- str_sub(pDat_kirc_mismatch$file_name, end = -9)
+
+pDat_kirc_mismatch <- pDat_kirc_mismatch %>% 
+  mutate(overall_names_match = case_when(
+    sample_name == file_name ~ "Yes", 
+    TRUE ~ "No"
+  ))
+
+pDat_kirc_mismatch %>% 
+  dplyr::count(overall_names_match) # okay great, all overall names match
+
+# Okay, all sample names are correct, meaning that the clinical information per sample is correct, even if the aliquot IDs and the FASTQ names are a mismatch
+
+# looks like the portion and vial codes are the different ones
+
+sample_name_mismatch <- pDat_kirc_mismatch %>% 
+  filter(names_match == "No")
+
+
+sample_name_mismatch$sample_name_codes <- str_sub(sample_name_mismatch$sample_name_codes, -7)
+sample_name_mismatch$file_name_codes <- str_sub(sample_name_mismatch$file_name_codes, -7)
+
+
+sample_name_mismatch <- cSplit(sample_name_mismatch, "sample_name_codes", sep = "-")
+sample_name_mismatch <- cSplit(sample_name_mismatch, "file_name_codes", sep = "-")
+
+# removing the 01 which signifies tumour type 
+sample_name_mismatch$sample_name_codes_1 <- str_sub(sample_name_mismatch$sample_name_codes_1, -1)
+sample_name_mismatch$file_name_codes_1 <- str_sub(sample_name_mismatch$file_name_codes_1, -1)
+
+sample_name_mismatch <- sample_name_mismatch %>% 
+  mutate(sample_name_portion = sample_name_codes_2,
+         file_name_portion = file_name_codes_2)
+
+sample_name_mismatch <- sample_name_mismatch %>% 
+  rename("sample_name_vial" = "sample_name_codes_1",
+         "file_name_vial" = "file_name_codes_1",
+         "sample_name_analyte" = "sample_name_codes_2",
+         "file_name_analyte" = "file_name_codes_2")
+
+sample_name_mismatch$sample_name_analyte <- str_sub(sample_name_mismatch$sample_name_analyte, -1)
+sample_name_mismatch$file_name_analyte <- str_sub(sample_name_mismatch$file_name_analyte, -1)
+
+sample_name_mismatch$sample_name_portion <- str_sub(sample_name_mismatch$sample_name_portion, end = -2)
+sample_name_mismatch$file_name_portion <- str_sub(sample_name_mismatch$file_name_portion, end = -2)
+
+
+sample_name_mismatch <- sample_name_mismatch %>% 
+  mutate(vial_match = case_when(
+    sample_name_vial == file_name_vial ~ "Yes", 
+    TRUE ~ "No")) %>% 
+  mutate(analyte_match = case_when(
+    sample_name_analyte == file_name_analyte ~ "Yes", 
+    TRUE ~ "No")) %>% 
+  mutate(portion_match = case_when(
+    sample_name_portion == file_name_portion ~ "Yes", 
+    TRUE ~ "No")) 
+
+```
+
+Okay, doesn't matter - I'm just going to replace the Aliquot IDs with the correct ones  
+
+```{r replacing-aliquot-id}
+
+pDat_kirc_updated <- pDat_kirc %>% 
+  dplyr::select(-Aliquot_ID, -sample_name) %>% 
+  rename("Aliquot_ID" = file_name) %>% 
+  dplyr::select(Sample, Aliquot_ID, fastq_name)
+
+
+pDat_kirc_updated <- pDat_kirc_updated %>% 
+  mutate(Aliquot = Aliquot_ID)
+
+pDat_kirc_updated <- cSplit(pDat_kirc_updated, "Aliquot", sep = "-")
+
+
+# splitting Aliquot_4 into numeric sample code and letter vial, and Aliquot_5 into sample portion and analyte type
+
+pDat_kirc_updated <- pDat_kirc_updated %>% 
+  mutate(Vial = Aliquot_4,
+         Analyte = Aliquot_5)
+
+# only keeping the last letter for both columns
+pDat_kirc_updated$Vial <- str_sub(pDat_kirc_updated$Vial, -1)
+pDat_kirc_updated$Analyte <- str_sub(pDat_kirc_updated$Analyte, -1)
+
+# renaming columns according to TCGA nomenclature
+pDat_kirc_updated <- pDat_kirc_updated %>% 
+  rename("Tissue_Source_Site" = "Aliquot_2",
+         "Participant" = "Aliquot_3",
+         "Sample_code" = "Aliquot_4",
+         "Portion" = "Aliquot_5")
+
+# removing columns signifying TCGA, Plate, and Centre
+pDat_kirc_updated <- pDat_kirc_updated %>% 
+  dplyr::select(-c(Aliquot_1, Aliquot_6, Aliquot_7))
+
+# removing last letter to keep only numeric code
+pDat_kirc_updated$Sample_code <- str_sub(pDat_kirc_updated$Sample_code, end = -2)
+pDat_kirc_updated$Portion <- str_sub(pDat_kirc_updated$Portion, end = -2)
+
+# giving explanations of the TCGA codes
+pDat_kirc_updated <- pDat_kirc_updated %>% 
+  mutate(Sample_code_explanation = case_when(
+    Sample_code == "01" ~ "Primary Solid Tumor",
+    Sample_code == "11" ~ "Solid Tissue Normal")) %>% 
+  mutate(Analyte_explanation = case_when(
+    Analyte == "R" ~ "RNA",
+    Analyte == "T" ~ "Total_RNA"
+  ))
+
+pDat_kirc_updated %>% 
+  dplyr::count(Analyte)
+
+```
+
+***
+
+## 4.0 Duplicates and Triplicates  
+There are also duplicate TCGA RNA-seq samples which come from different aliquots of the same patient
+
+
+```{r replicates}
+
+replicates <- pDat_kirc_updated %>% 
+  dplyr::count(Sample) %>% 
+  filter(n > 1)
+nrow(replicates) # 24
+
+replicates_pdat <- replicates %>% 
+  left_join(pDat_kirc_updated, by = "Sample")
+nrow(replicates_pdat)
+
+
+# hmm 24*2 = 48, there are 52 samples in replicates_pdat
+
+duplicates <- replicates_pdat %>% 
+  filter(n == 2)
+
+triplicates <- replicates_pdat %>% 
+  filter(n == 3)
+
+```
+
+Okay, given that the T is whole different analyte, I'll remove all those samples and only keep the R (RNA)  
+
+```{r removing-total-rna-samples}
+
+pDat_kirc_final <- pDat_kirc_updated %>%  
+  filter(Analyte == "R")
+
+pDat_kirc_final %>% 
+  dplyr::count(Sample) %>% 
+  filter(n > 1)
+
+```
+
+Okay, so all the triplicates are R, and some are from Vial B as opposed to A. Removing those:  
+
+```{r triplicates-processing}
+
+triplicates <- triplicates %>% 
+   filter(Vial == "A")
+
+# keeping only the first entry (i.e. only one sample per replicate) 
+triplicates <- triplicates %>% 
+  group_by(Sample) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  dplyr::select(-n)
+
+
+# removing triplicates from pDat_kirc_final
+
+pDat_kirc_final <- pDat_kirc_final %>% 
+  filter(!(Sample %in% triplicates$Sample))
+
+# joining triplicates back
+
+pDat_kirc_final <- rbind(pDat_kirc_final, triplicates)
+
+pDat_kirc_final %>% 
+  dplyr::count(Sample) %>% 
+  filter(n > 1)
+
+# perfect
+
+# checking if aliquot names now match fastq names  
+
+pDat_kirc_final <- pDat_kirc_final %>% 
+  mutate(sample_name = Aliquot_ID,
+         file_name = fastq_name,
+         file_name = str_replace_all(file_name, "trimmed_", ""),
+         file_name = str_replace_all(file_name, "_mirna", ""),
+         file_name = str_trim(file_name))
+
+pDat_kirc_final <- pDat_kirc_final %>% 
+  mutate(overall_names_match = case_when(
+    sample_name == file_name ~ "Yes", 
+    TRUE ~ "No"
+  ))
+
+pDat_kirc_final %>% 
+  dplyr::count(overall_names_match)
+
+
+# final filtered KIRC samples
+pDat_kirc_final_to_match <- pDat_kirc_final %>% 
+  dplyr::select(-Sample, -sample_name, -file_name, -overall_names_match)
+
+```
+
+***
+## 5.0 Final eDat and pDat  
+
+pDat: 
+
+```{r final-pdat}
+
+fetal_pDat <- pDat %>% 
+  filter(Condition == "Fetal")
+
+pDat <- pDat %>% 
+  dplyr::select(-Aliquot_ID)
+
+pDat_kirc_joined <- pDat_kirc_final_to_match %>% 
+  left_join(pDat, by = "fastq_name") %>% 
+  dplyr::select(Sample, Case_ID, Sex, Condition, Self_reported_race, cluster_group, everything())
+
+pDat_final_joined <- bind_rows(fetal_pDat, pDat_kirc_joined)
+
+pDat_final_joined %>% 
+  dplyr::count(Sample) %>% 
+  filter(n > 1)
+
+```
+
+eDat:
+
+```{r final-edat}
+
+eDat_updated <- eDat %>% 
+  unite("mirs", c(precursor, miRNA), sep = ":") %>% 
+  column_to_rownames("mirs")
+
+eDat_updated <- eDat_updated %>% 
+  dplyr::select(which(colnames(eDat_updated) %in% pDat_final_joined$fastq_name))
+
+
+# reordering
+
+match(pDat_final_joined$fastq_name, colnames(eDat_updated))
+reorder_idx <- match(pDat_final_joined$fastq_name, colnames(eDat_updated))
+eDat_updated <- eDat_updated[reorder_idx]  
+colnames(eDat_updated) == pDat_final_joined$fastq_name
+
+colnames(eDat_updated) <- pDat_final_joined$Sample
+colnames(eDat_updated) == pDat_final_joined$Sample
+
+eDat_updated <- eDat_updated %>% 
+  rownames_to_column("mirs") %>% 
+  separate(mirs, c("precursor", "miRNA"), sep = ":")
+
+```
+
+```{r saving, eval=FALSE}
+
+write_rds(eDat_updated, "KIRC_eDat_replicates_removed.RDS")
+write.xlsx(pDat_final_joined, "KIRC_pDat_replicates_removed.xlsx")
+
+```
+
+***
+
+
+
+
+
+

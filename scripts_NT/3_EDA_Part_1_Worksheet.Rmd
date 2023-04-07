@@ -1,0 +1,238 @@
+---
+title: "KICR: Exploratory Data Analysis" 
+author: "Nikita Telkar"
+date: "February 2023"
+output: 
+  html_document: 
+    keep_md: yes 
+    toc: true  
+    toc_depth: 4
+    toc_float: 
+      collapsed: false 
+      smooth_scroll: true
+    theme: flatly  # cosmo, paper, lumen, sandstone, simplex, yeti; cerulean, journal, flatly, darkly, readable, spacelab, united
+    highlight: haddock # zenburn, tango, pygments, kate, monochrome, espresso, zenburn, haddock, textmate
+---
+
+
+### 0.0 Introduction  
+
+Part 1: Sample Variable Distribution (15 Feb 2023)
+
+Here, we're going to go through what our raw data (`eDat`) and clinical data (`pDat`) looks like by making plots depicting the spread and variability of our data.   
+
+*Ps: I want you to add your own notes throughout the script to ensure that if you ever came back to run this analysis again, you understand in your own words what function you're performing*  
+
+We're also going to be making a new type of sample information dataframe called `mDat`. mDat (or metadata) stores all of the sample relevant information that it not phenotypic/clinical data  
+
+***  
+
+### 1.0 Loading Packages and Data  
+
+Loading all of our packages:  
+
+```{r packages, error=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+# rmarkdown packages
+library(knitr) 
+library(rmarkdown)
+
+# data wrangling packages
+library(tidyverse)
+
+# data loading packages
+library(readxl) 
+library(openxlsx)
+library(here)
+
+
+# setting global script options - i.e, parameters/arguents that will be applied to all chunks, without having to explicity specify them each time
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE)
+
+```
+
+Reading in data:  
+
+```{r data}
+
+pDat <- here::here()
+
+```
+
+**Replace the NAs in `Self_reported_race` with the value "not reported"**  
+
+```{r replace-na}
+
+
+```
+
+
+```{r data-formatting}
+
+### --> Let's make condition specific pDats - we might need them later on
+
+pDat_tumour <- pDat %>% 
+  filter(Condition == "Tumour")
+
+
+
+
+# add a column in pDat for whether samples are matched or not
+
+matched <- pDat %>% 
+ 
+
+```
+
+***
+
+### 2.0 Summary Statistics  
+
+#### 2.1 Samples  
+
+Let's check how our clinical variables are spread within our data
+
+```{r sum-stats, cache = TRUE}
+
+library(gtsummary)
+
+pDat %>% 
+  dplyr::select(Sex, Condition, Self_reported_race) %>% 
+  tbl_summary(by = Condition)
+
+```
+
+Let's replace the lower case words in `Self_reported_race` to capitals i.e., 'black or african american' to 'Black or African American'  
+
+**Use the `case_when` function to replace the values within the Self_reported_race column**  
+
+```{r self-reported-race}
+
+
+```
+
+**Q: Do you think it's important to take note of the distribution of the samples per sex? Is there a higher incidence of renal cancer in one sex versus the other?**  
+
+A:  
+  
+  
+**Q: Given that there's a very low number of samples that are not self-reported Caucasian, do you think we should include or exclude the non-Caucasian samples? Either choice is valid, but write down your explanation and justification of your choice**    
+**Reformat your eDat and pDat if you decide to exclude them**   
+
+A:   
+  
+
+  
+Let's now make some plots so visualise the spread of our samples by the clinical variables that we have. We're going to use the `ggplot2` package for plotting.  
+
+`ggplot2` (the Grammar of Graphics) package is used to make graphs in R, where it has the following necessary components:  
+
+- `aes` = aesthetics = your x and y axes, and any additional variables you want to visualize your data by  
+- `geoms` = the type to graph you want to plot (e.g., bar plot = geom_bar, scatter plot = geom_point, etc.)  
+
+Let's see the number of samples we have by condition by making a bar graph
+
+```{r condition-plot}
+
+pDat %>% 
+  ggplot(aes(x = Condition, fill = Condition)) + 
+  # the plus sign is how you add additional arguments/components to your ggplot  
+  # fill = variable you want to colour by 
+  geom_bar(stat = "count") +
+  # because we want to count the number of samples, we specify `count`. If we had denoted a y-axis, we would use stat = "identity"
+  labs(title = "KIRC Summary Statistics", y = "No. of Samples")
+  # labels of our plot
+
+```
+
+
+Hmm, I'd like to change:  
+
+- the order of the columns, so that Tumour is first, NM is second, and Fetal is last  
+- the colours assigned to the 3 condition variables  
+
+Let's apply those changes:    
+
+1. To reorder the columns, we have to reorder the variable itself. In R, an ordered variable is called a *factor*. We can specify the order of the attributes within a variable (called the levels of that factor) using the `fct_relevel`function.  
+
+`mutate` is used when we want to make a new column, or want to overwrite an existing column  
+
+
+```{r condition-formatting}
+
+# changing and overwriting Condition from a character to a factor, and setting its levels
+
+pDat <- pDat %>% 
+  mutate(Condition = as.factor(Condition)) %>% 
+  mutate(Condition = fct_relevel(Condition, c("Tumour", "NM", "Fetal")))
+
+```
+
+
+2. Let's also make a custom colour palette for our variables. I've made my own colour palette (the one I use in my KIRC project), **but tweak it and add your own colours per variable**  
+
+
+```{r colpal}
+
+colpal <- list(Condition = c(`Fetal` = "#ECB576", `NM` = "#115363", `Tumour` = "#A34237"),
+               Sex = c(`Male` = "#E05D5D", `Female` = "#ffb708"),
+               Self_reported_race = c(`Black or African American` = "#9BBC49", 
+                                      `Asian` = "#5B8D33", 
+                                      `White` = "#286E16", 
+                                      `Not Reported` = "#666666"))
+
+```
+
+Making the above plot with our ordered factor variable and custom colour palette:  
+
+```{r condition-plot-colpal}
+
+pDat %>% 
+  ggplot(aes(x = Condition, fill = Condition)) + 
+  geom_bar(stat = "count", width = 0.5) +
+  scale_fill_manual(values = colpal$Condition) +
+  labs(title = "KIRC Summary Statistics", y = "No. of Samples") +
+  theme_minimal()
+
+
+```
+
+**Make similar bar graphs, this time for sex and self-reported race**  
+
+```{r pdat-plots}
+
+
+
+```
+
+Okay, but what if we want to check the spread of Sex within each Condition?  
+
+```{r condition-sex-plot}
+
+pDat %>% 
+  ggplot(aes(x = Condition, fill = Sex)) +
+  geom_bar(stat = "count", width = 0.5, position = position_dodge2(preserve = "single")) +
+  scale_fill_manual(values = colpal$Sex) +
+  labs(title = "KIRC Summary Statistics", y = "No. of Samples") +
+  theme_minimal()
+
+
+```
+
+*To find out the explanation and all available arguments of a function, type a ? followed by the name of the function in the console (e.g., ?position_dodge2)*  
+
+**Make any further plots that you'd like to visualise the variable distribution of**  
+
+```{r}
+
+```
+
+
+**Replace the author section in the YAML at the absolute top of the script with your name**  
+
+Once you replaced the name, navigate to the Knit option in the header --> click the drop-down arrow --> select Project Directory --> click on Knit  
+
+**Once you have knitted the script once, play around with the theme and highlight options and select a combination that you like (all the available options for the two I've commented above)**   
+
+
+***  

@@ -1,0 +1,244 @@
+---
+title: "KIRC: Exploratory Data Analysis" 
+author: "Nikita Telkar"
+date: "February 2023"
+output: 
+  html_document: 
+    keep_md: yes 
+    toc: true  
+    toc_depth: 4
+    toc_float: 
+      collapsed: false 
+      smooth_scroll: true
+    theme: flatly  
+    highlight: haddock
+---
+
+--> Copy and paste the below as is into your 3_EDA_worksheet after `2.1 Samples`  
+
+#### 2.2 Expression data  
+
+
+We'll first check how many of our raw reads aligned to either miRNAs or miRNA precursors using one of the summary files provided by miRMaster `mirbase_mapping_perc_norm.xlsx`  
+
+**From your F Drive, upload the above files each for cluster 1, cluster 2, and fetal into the GDrive data folder, load them in and join them**  
+
+*Hint: remember that the cluster 1 and cluster 2 files contain all samples that we ran in miRMaster, so subset to only conatin the replicates_removed samples and only the kidney fetal samples*  
+
+```{r mapping-stats-files}
+
+mir_stats_cluster_1 <- 
+  
+mir_stats_cluster_2 <- 
+
+mir_stats_fetal <- 
+
+  
+# join all stats dfs together
+mir_stats_all <- 
+  
+
+# select only samples present within pDat i.e., fetal kidney, NM, non-duplicated tumour
+mir_stats <- mir_stats_all %>% 
+  dplyr::select(Mapping, which(names(mir_stats_all) %in% pDat$fastq_name))
+
+```
+
+**Rename the mapping column to not have spaces within the words**  
+
+*Hint: Use the `str_replace_all` function*    
+
+```{r mir-stats-name}
+
+
+```
+
+**Make a new df called mDat, by joining pDat and mir_stats**  
+
+*Hint: You'll need to first  transpose `mir_stats`, i.e., convert rows to columns and columns to rows in order to join. Use the `t` function to do so (e.g., transposed_df <- t(original_df))* 
+
+As mentioned in the introduction, all of the sample information that is not technically clinical or phenotypic, goes into an extension of pDat, called mDat.  
+
+```{r mir-stats}
+
+mir_stats <- mir_stats %>% 
+  
+
+mDat <- 
+  
+```
+
+We'll now check the % of sequences aligned to either miRNAs or precursors, and also the % of sequences not aligned, for fetal samples by making a bar plot  
+
+```{r mir-stats-fetal}
+
+mDat %>% 
+  filter(Condition == "Fetal") %>%
+  dplyr::select(Sample, Condition, Total_Mapped_on_Precursor_or_miRNA, Total_Unmapped) %>% 
+  pivot_longer(cols = c(Total_Mapped_on_Precursor_or_miRNA, Total_Unmapped), 
+               names_to = "Mapped", values_to = "Percentage") %>% 
+  mutate(Mapped = fct_relevel(Mapped, c("Total_Unmapped", "Total_Mapped_on_Precursor_or_miRNA")),
+         Percentage = as.numeric(Percentage),
+         Percentage = round(Percentage, digits = 1)) %>% 
+  ggplot(aes(x = Sample, y = Percentage, fill = Mapped)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  scale_fill_manual(values = c("#969695", "#67c392")) +
+  facet_grid(~"Condition", scales = "free_x") +
+  theme_minimal() +
+  # theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
+  theme(legend.position = "bottom") +
+  coord_cartesian(y = c(0, 100)) +
+  scale_y_continuous(breaks=seq(0, 100, 10), expand =c(0,0)) +
+  labs(title = "Mapped vs. Unmapped Reads: Fetal Kidney Samples", x = "Sample", y = "Percentage", colour = "Percentage") 
+
+```
+
+**Make the above plots for Tumour and NM samples. Are there any samples you think we should remove based on these metrics? If yes, why?**  
+
+Add the `coord_flip` argument at the bottom on the plot code for the below plots  
+
+```{r mir-stats-kicr}
+
+
+
+```
+
+
+Let's now see the spread of our read counts (expression counts) per sample  
+
+`ggplot2` only uses one dataframe for it's input - given that we have our expression in eDat and phenotype in pDat, we'll have to combine these dataframes in order for us to visualise our expression by variables  
+
+We'll use the slightly advanced function `pivot_longer` to convert our wide eDat df, into a 'longer' df (when this function is used, R forgets to incorporate the rownames into the new df that we make, and so, if you have rownames, you'll have to convert them into a separate column). 
+
+```{r pivot}
+
+eDat_long <- eDat %>% 
+  pivot_longer(cols = -c(precursor, miRNA), names_to = "Sample", values_to = "Reads")
+
+```
+
+You'll see that all of the column names (`names_to`) have been gathered up into one column named Sample (to match the name of the column with all the names of the samples in pDat), and all the expression counts (`values_to`) have been formatted into one column I've named as Reads  
+
+To add all the phenotype and expression data together in one df to be able to plot by different variables:  
+
+**Join `eDat-long` with `pDat`**  
+
+```{r eDat-long}
+
+eDat_long <- eDat_long %>% 
+  left_join(pDat, by = "Sample")
+
+```
+
+We'll make a density plot and box plot to check our spread.  
+
+When plotting expression data, it's standard practice to convert the expression counts to log2 values, as it helps visualise the differences that might exist between variables  
+
+**Make a new variable called 'log2Reads' which is the log2 transformation of the Reads column in eDat_long**  
+
+```{r edat-log2}
+
+eDat_long <- eDat_long %>% 
+  
+
+```
+
+**Make a boxplot with Condition on the x-axis and log2Reads on the y-axis, and colour by Condition**  
+
+```{r exp-boxplot}
+
+eDat_long %>% 
+  ggplot()
+
+```
+
+Now, you should have gotten a warning saying `Warning: [38;5;248mRemoved 1107966 rows containing non-finite values (stat_boxplot())` **Can you guess why?**  
+
+Go ahead and convert 0 to its log2 expression:
+
+```{r log2}
+
+log2(0)
+
+```
+
+We see that the log2 value of 0 is infinity, and we cannot plot an infinite value.
+
+And so, to be able to plot 0 values, we do a log2(x + 1) transformation, the most common way to be able to visualise this expression This transformation adds a pseudo count/value of 1 to all values, essentially shifting our entire expression matrix by +1.  
+
+Overwriting `log2Reads` to log (x + 1)
+
+```{r edat-log2-plus-1}
+
+eDat_long <- eDat_long %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+```
+
+**Now, make the box plot again using our updated log2Reads**  
+
+```{r exp-boxplot-log2}
+
+eDat_long %>% 
+  ggplot()
+
+```  
+
+**Can you make a box plot which includes only the fetal samples on the x-axis?**  
+*Hint: Use the `filter` function to pull out only the Fetal samples from eDat_long before piping into ggplot, and then change the x-axis variable*  
+
+
+```{r exp-boxplot-fetal}
+
+eDat_long %>% 
+  
+
+```  
+
+
+We'll also make a density plot, which is just a different way to view the same data:  
+
+```{r density-plot}
+
+eDat_long %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: Raw Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal() 
+
+```
+
+This is the spread of our raw data  
+
+**Q. What do you think is the interpretation of this plot?**    
+
+A:  
+
+
+**Facet the above plot by Sex, add the following argument at the end --> theme(legend.position = "bottom")**  
+
+```{r density-sex}
+
+eDat_long %>% 
+  
+  
+```
+
+
+***  
+
+**Write down a brief overview of renal cancer**  
+
+- What is the incidence?  
+- Does incidence vary by any biological or environmental variables?  
+- Are there any known genes/proteins/miRNAs/pathways associated with renal cancer?  
+- What is the current method of treatment?  
+- Is there a current gap in knowledge within the field?  
+
+
+End of script  
+
+***  
+
