@@ -288,18 +288,27 @@ eFil_fetal_filtered <- eFil_fetal_sum %>%
   
   # combine eFil_fetal_filtered to eDat (entire)
 
-eFil_fetal_filtered <- eFil_fetal_filtered %>% 
+eFil_1_10 <- eFil_fetal_filtered %>% 
   rownames_to_column("miRNA")
 
 
 eDat <- eDat %>% 
   rownames_to_column("miRNA")
 
-eFil <- eFil_fetal_filtered %>% 
+eFil <- eFil %>% 
+  rownames_to_column("miRNA")
+
+ eFil <- eFil_1_10 %>% 
   dplyr::select (miRNA) %>% 
   left_join(eDat, by = "miRNA") #  left_join(eDat, by = c("miRNA" = "microRNA))
 
 dim(eFil)
+
+eFil <- eFil %>% 
+  dplyr::rename ("mirs" = "miRNA")
+
+eFil_1_10 <- eFil_1_10 %>% 
+  dplyr::rename ("mirs" = "miRNA")
 
 ```
 
@@ -314,7 +323,6 @@ Each mature miRNA (the ones having -3p and -5p at the end of their names) comes 
 Let's first check which mature miRNAs are duplicated  
 
 ```{r dup-mirs}
-#issues with knitting since obj have not yet been created - will ust comment out for now 
 eFil_1_10 %>%
   separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
   dplyr::count(miRNA) %>% # count the frequency of mature miRNAs
@@ -326,6 +334,8 @@ So, we can see that there are 78 mature miRNAs (within our fetal filtered miRNAs
 
 
 ```{r fetal-fil-mature}
+
+#all lines above are working properly, when i run the chunk below, the eFil has 975 obs and 12-13 variables - should have 874 rows and 565 columns.
 
 eFil <- eFil_1_10 %>%
   separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
@@ -348,33 +358,40 @@ eFil <- eFil_1_10 %>%
   column_to_rownames("miRNA")
 
 dim(eFil)
+dim(eFil_1_10) 
+
+
 
 ```
 
 **CHECKPOINT:** Your filtered df with mature miRNAs `eFil` should have 874 rows and 565 columns 
 
-**Make the boxplots and density plots for our filtered data, as we did for the raw data in the previous script, and display them all togther **  
+**Make the boxplots and density plots for our filtered data, as we did for the raw data in the previous script, and display them all together **  
 *Hint: Make eFil_long*  
 
 ```{r fil-plots}
 
-# eFil_long <- 
-#   
-# 
-# d1 <- 
-# 
-#   
-# d2 <- 
-# 
-#     
-# b1 <- 
-# 
-# 
-# b2 <- 
-# 
-# 
-# library(ggpubr)
-# ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
+eFil_long <-
+  
+eFil_long <- eFil %>% 
+  pivot_longer(cols = -c(precursor, miRNA), names_to = "Sample", values_to = "Reads")
+
+
+
+d1 <-
+
+
+d2 <-
+
+
+b1 <-
+
+
+b2 <-
+
+
+library(ggpubr)
+ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
 
 ```
 
