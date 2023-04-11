@@ -295,13 +295,13 @@ eFil_1_10 <- eFil_fetal_filtered %>%
 eDat <- eDat %>% 
   rownames_to_column("miRNA")
 
-eFil <- eFil %>% 
-  rownames_to_column("miRNA")
-
  eFil <- eFil_1_10 %>% 
   dplyr::select (miRNA) %>% 
   left_join(eDat, by = "miRNA") #  left_join(eDat, by = c("miRNA" = "microRNA))
-
+ 
+eFil <- eFil %>% 
+  rownames_to_column("miRNA")
+ 
 dim(eFil)
 
 eFil <- eFil %>% 
@@ -337,6 +337,14 @@ So, we can see that there are 78 mature miRNAs (within our fetal filtered miRNAs
 
 #all lines above are working properly, when i run the chunk below, the eFil has 975 obs and 12-13 variables - should have 874 rows and 565 columns.
 
+# equivalent section from LIHC script:
+# eFil <-eFil_1_10 %>% 
+#   mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+#   group_by(miRNA) %>%
+#   slice_max(Sum) %>%
+#   dplyr::select(-Sum, - precursor) %>%
+#   distinct(miRNA, .keep_all = TRUE)
+
 eFil <- eFil_1_10 %>%
   separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
 
@@ -358,7 +366,10 @@ eFil <- eFil_1_10 %>%
   column_to_rownames("miRNA")
 
 dim(eFil)
+#874 10 
+
 dim(eFil_1_10) 
+#975 12
 
 
 
@@ -371,20 +382,31 @@ dim(eFil_1_10)
 
 ```{r fil-plots}
 
-eFil_long <-
+#eFil_long <-
   
 eFil_long <- eFil %>% 
   pivot_longer(cols = -c(precursor, miRNA), names_to = "Sample", values_to = "Reads")
 
 
 
-d1 <-
+d1 <- eFil_long %>% 
+  ggplot(aes(x = Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: Raw Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal() 
 
 
 d2 <-
 
 
-b1 <-
+b1 <- eFil_long %>% 
+  ggplot(aes(x = Sample, y = Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  theme_minimal() 
 
 
 b2 <-
