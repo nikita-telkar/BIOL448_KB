@@ -290,7 +290,7 @@ eFil_fetal_filtered <- eFil_fetal_sum %>%
 
 eFil_1_10 <- eFil_fetal_filtered %>% 
   rownames_to_column("miRNA")
-
+  
 
 eDat <- eDat %>% 
   rownames_to_column("miRNA")
@@ -345,35 +345,126 @@ So, we can see that there are 78 mature miRNAs (within our fetal filtered miRNAs
 #   dplyr::select(-Sum, - precursor) %>%
 #   distinct(miRNA, .keep_all = TRUE)
 
-eFil <- eFil_1_10 %>%
-  separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
 
-  mutate(Sum = rowSums(select_if(., is.numeric))) %>%
-  # here I'm specifying to select only the numeric columns, because our first columns are the miRNA names
+# eFil <- eFil_1_10 %>% 
+#   separate(mirs, c("precursor", "miRNA"), sep = ":") %>% 
+#   
+#   mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+#   # here I'm specifying to select only the numeric columns, because our first columns are the miRNA names
+#   
+#   group_by(miRNA) %>% 
+#   # grouping by the mature miRNA names
+#   
+#   slice_max(Sum) %>% 
+#   # within each mature miRNA group, only keeping the ones which have the highest value in Sum
+#   
+#   dplyr::select(-Sum, -precursor) %>%
+#   # removing the Sum and miRNA precursor column (as we have other dfs we can match to find out the precursor if needed)
+#   
+#   distinct(miRNA, .keep_all = TRUE) %>%
+#   # remove duplicates within the miRNA column
+#   
+#   column_to_rownames("miRNA")
 
-  group_by(miRNA) %>%
-  # grouping by the mature miRNA names
+#
 
-  slice_max(Sum) %>%
-  # within each mature miRNA group, only keeping the ones which have the highest value in Sum
+# dim(eFil)
+# eFil_1_10 <- eDat %>% 
+#    dplyr::select (miRNA) %>% 
+#   left_join(eDat, by = "miRNA")
+#new - produces 2656 565
 
+
+eFil <- eFil_1_10 %>% 
+  separate(mirs, c("precursor", "miRNA"), sep = ":") %>% 
+  mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+  group_by(miRNA) %>% 
+  slice_max(Sum) %>% 
   dplyr::select(-Sum, -precursor) %>%
-  # removing the Sum and miRNA precursor column (as we have other dfs we can match to find out the precursor if needed)
-
   distinct(miRNA, .keep_all = TRUE) %>%
-  # remove duplicates within the miRNA column
-
   column_to_rownames("miRNA")
+
+# split miRNA column in eDat to mirna and precursor 
+# re-left join eFil and eDat
+ eDat <- eDat %>% 
+   separate(miRNA, c("precursor", "miRNA"), sep = ":")
+
+eFil_1_10 <- eFil_1_10 %>% 
+  dplyr::rename ("mirs" = "miRNA")
+
 
 dim(eFil)
 #874 10 
 
+
 dim(eFil_1_10) 
 #975 12
+
+eFil <- eFil %>% 
+  rownames_to_column("miRNA")
+
+
+
+
+eFil <- eDat %>% 
+ left_join(eDat, by = "miRNA") 
+dim(eFil)
+# now it's 2887 1131
 
 
 
 ```
+
+
+``` {r help}
+# ## IMPORT DATA
+# expression_TCGA_Gtex_Mari <- read.delim("~/mariana_doc/CEMITOOL/expression_TCGA_Gtex_Mari.txt")
+# ## select only 472 genes associated to metabolism
+# ## create a obj with 472 target genes
+# ## target
+# ## create a dataframe null
+# target = data.frame(matrix(nrow = 472, ncol = 1))
+# ## define colname
+# target$matrix.nrow...473..ncol...1.= c("AKR1B10",
+# ## remove first column
+# target$matrix.nrow...472..ncol...1. <- NULL
+# ## rename colname
+# colnames(target) <- c("target")
+# ## select only rows equal
+# require(dplyr)
+# data <- semi_join(expression_TCGA_Gtex_Mari,target, by = c(gene = "target"))
+# ## define gene name rownames
+# row.names(data) <- data$gene
+# ## remove genes
+# data$gene <- NULL
+
+
+library(dplyr)
+
+filtered_mature_df = data.frame(matrix(nrow = 874, ncol = 1))
+filtered_mature_df$matrix.nrow...874..ncol...1.<- eFil$miRNA
+colnames(filtered_mature_df) <- c("target")
+require(dplyr)
+data <- semi_join(eDat,filtered_mature_df, by = c(miRNA = "target"))
+row.names(data) <- data$gene
+
+
+data2 <- data %>% 
+  mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+  group_by(miRNA) %>% 
+  slice_max(Sum) %>% 
+  dplyr::select(-Sum, -precursor) %>%
+  distinct(miRNA, .keep_all = TRUE) %>%
+  column_to_rownames("miRNA")
+
+dim(data2)
+#874 566
+
+#eFil_long$condition <- c(rep(10,"fetal"), rep(70, "normal"), rep(423016, "tumour"))
+  
+
+```
+
 
 **CHECKPOINT:** Your filtered df with mature miRNAs `eFil` should have 874 rows and 565 columns 
 
@@ -382,15 +473,34 @@ dim(eFil_1_10)
 
 ```{r fil-plots}
 
-#eFil_long <-
-  
-eFil_long <- eFil %>% 
-  pivot_longer(cols = -c(precursor, miRNA), names_to = "Sample", values_to = "Reads")
+# data2 <- data2 %>% 
+#   rownames_to_column("miRNA")
 
+#following line won't run unless i run the line above
+eFil_long <- data2 %>% 
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
 
+# eFil_long_2 <- eFil_long %>% 
+#   mutate(Condition = eDat_long$Condition[match(Sample, eDat_long$Sample)])
+# forgot I could left join by pDat
 
-d1 <- eFil_long %>% 
-  ggplot(aes(x = Reads, fill = Condition, colour = Condition)) +
+eFil_long_2 <- eFil_long %>% 
+  left_join(pDat, by = "Sample")
+
+eFil_long_2 <- eFil_long_2 %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+d1 <- eFil_long_2 %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: Filtered Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal() 
+
+#what goes here? unfiltered raw data maybe 
+d2 <-  eDat_long %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.6) +
   scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
   # scale_colour_manual(values = colpal$Condition) +
@@ -398,22 +508,31 @@ d1 <- eFil_long %>%
   theme_minimal() 
 
 
-d2 <-
+# boxplot with Condition on the x-axis and log2Reads on the y-axis, and colour by Condition  
 
+b1 <- eFil_long_2 %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  theme_minimal() 
 
-b1 <- eFil_long %>% 
-  ggplot(aes(x = Sample, y = Reads, fill = Condition, colour = Condition)) +
+#what goes here?
+b2 <- eDat_long %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
   geom_boxplot() +
   scale_fill_manual(values = colpal$Condition) +
   scale_colour_manual(values = colpal$Condition) +
   theme_minimal() 
 
 
-b2 <-
-
-
 library(ggpubr)
+
+#must set graphs as objects first 
 ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
+#
+#ggarrange(b1, d1, ncol = 2)
+
 
 ```
 
@@ -426,27 +545,25 @@ ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
 
 ```{r clusters}
 
-# 
-# 
-# # cluster 1 filtered
-# pDat_cluster_1 <- pDat %>% 
-# 
-# 
-# eFil_cluster_1 <- eFil %>% 
-# 
-# 
-# 
-# # cluster 2 filtered
-# pDat_cluster_2 <- pDat %>% 
-# 
-# 
-# eFil_cluster_2 <- eFil %>% 
-# 
-# 
-# 
-# # fetal filtered
-# eFil_fetal <- eFil %>% 
-# 
+
+# cluster 1 filtered
+pDat_cluster_1 <- pDat %>%
+  filter(cluster_group == 1)
+
+eFil_cluster_1 <- eFil_long_2 %>%
+  filter(cluster_group == 1)
+
+# cluster 2 filtered
+pDat_cluster_2 <- pDat %>%
+  filter(cluster_group ==2)
+
+eFil_cluster_2 <- eFil_long_2 %>%
+  filter(cluster_group == 2)
+
+# fetal filtered
+eFil_fetal <- eFil_long_2 %>%
+  filter(Condition == "Fetal")
+
 
 ```
 
@@ -457,18 +574,20 @@ ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
 
 ```{r efil-cluster-fetal}
 
-# eFil_c1_fetal <- eFil_fetal %>% 
-# 
-# 
-# pDat_c1_fetal <- pDat %>% 
-# 
-# 
-# 
-# eFil_c2_fetal <- eFil_fetal %>% 
-# 
-# 
-# pDat_c2_fetal <- pDat %>% 
-# 
+# pDat_cluster_1$miRNA <- NA
+# pDat_cluster_1$Reads <- NA
+#  
+# i think i did this wrong - check with Nikita 
+eFil_c1_fetal <- rbind(eFil_cluster_1,eFil_fetal)
+
+pDat_c1_fetal <- rbind(pDat_cluster_1, pDat_fetal)
+#has 289 samples
+
+eFil_c2_fetal <- rbind(eFil_cluster_2,eFil_fetal)
+
+pDat_c2_fetal <- rbind(pDat_cluster_2, pDat_fetal)
+#has 286 samples
+
 
 ```
 
@@ -477,20 +596,54 @@ ggarrange(b1, d1, b2, d2, nrow = 2, ncol = 2)
 **Let's check the density and boxplots for our eFil and separated clusters together now**  
 
 ```{r efil-cluster-plots, fig.width=10, fig.height=5}
+eFil_c1_fetal <- eFil_c1_fetal %>% 
+  mutate(log2Reads = log2(Reads + 1))
 
-# d3 <- 
-# 
-#   
-# d4 <- 
-# 
-# 
-# b3 <- 
-# 
-# 
-# b4 <- 
-#   
-#   
-# ggarrange(b2, d2, b3, d3, b4, d4, nrow = 3, ncol = 2)
+eFil_c2_fetal <- eFil_c2_fetal %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+pDat_c1_fetal$Sex[pDat_c1_fetal$Sex == "M"]<-"Male"
+pDat_c1_fetal$Sex[pDat_c1_fetal$Sex == "F"]<-"Female"
+pDat_c2_fetal$Sex[pDat_c2_fetal$Sex == "M"]<-"Male"
+pDat_c2_fetal$Sex[pDat_c2_fetal$Sex == "F"]<-"Female"
+
+d3 <- eFil_c1_fetal %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Filtered Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal() 
+
+
+d4 <- eFil_c2_fetal %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Filtered Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal()
+
+
+#look into better ways to separate the data - not by sex, and modify later when reviewing script - you likely assigned the wrong dataframes to each plot that Nikita intended for you to make - check LIHC script plots for reference
+
+b3 <-  pDat_c1_fetal %>% 
+  ggplot(aes(x = Condition, y = Sex, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  theme_minimal()
+
+
+b4 <-  pDat_c2_fetal %>% 
+  ggplot(aes(x = Condition, y = Sex, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  theme_minimal()
+
+#b1 and d1 correspond to eFil plots previously made 
+ggarrange(b1, d1, b3, d3, b4, d4, nrow = 3, ncol = 2)
 
 ```
 
@@ -507,32 +660,53 @@ Normalization takes into account the full expression dataset that we have, and a
 We’re going to use the [Relative Log Expression](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0206312#:~:text=Relative%20Log%20Expression%20(RLE)%3A,geometric%20mean%20across%20all%20samples.) method of normalization, and now that we've separated our samples into 2 datasets by cluster, we're going to normalize each one separately:  
 
 ```{r norm-c1}
-# 
-# library(DESeq2)
-# library(edgeR)
-# 
-# filtered_mirna_names <- as.data.frame(row.names(eFil)) # only making filtered_mirna_names once as the miRNAs are the same between both clusters
-# samples_cluster_1 <- pDat_c1_fetal$Sample
-# 
-# # computing normalized counts (between sample normalization of miRNA expression)
-# norm_counts_c1 <- DGEList(genes = filtered_mirna_names, 
-#                           counts = eFil_c1_fetal, 
-#                           samples = samples_cluster_1)
-# 
-# norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
-# 
-# head(norm_counts_c1[["samples"]]) # the norm.factors is the numerical adjustment value that will be applied to the raw expression
-# 
-# # performing within sample normalization of miRNA expression (CPM = Counts per Million = RPM = Reads per Million)
-# eNorm_c1 <- cpm(norm_counts_c1)
-# 
-# # converting to our usual log2(x+1) expression
-# eNorm_c1 <- log2(eNorm_c1 + 1) 
-# 
-# # converting the expression counts into whole numbers
-# eNorm_c1 <- round(eNorm_c1, digits = 0)
-# 
-# eNorm_c1 <- as.data.frame(eNorm_c1)
+eDat <- eFil %>% 
+  column_to_rownames("miRNA") %>% 
+  as.matrix()
+
+eNorm <- as.data.frame(row.names(eDat))
+norm <- DGEList(counts = eDat, samples = pDat$Sample, genes = eNorm)
+dge <- calcNormFactors(norm, method = "RLE")
+rle <- cpm(dge)
+rle <- as.data.frame(rle)
+
+
+library(DESeq2)
+library(edgeR)
+
+#provided script will not run as is and produces this error:
+# Error in DGEList(genes = filtered_mirna_names, counts = eFil_c1_fetal,  : 
+#   The count matrix is a data.frame instead of a matrix and 16 columns are non-numeric.
+#   Should these columns be gene annotation instead of counts?
+
+filtered_mirna_names <- as.data.frame(row.names(eFil)) # only making filtered_mirna_names once as the miRNAs are the same between both clusters
+samples_cluster_1 <- pDat_c1_fetal$Sample 
+reads_cluster_1 <- eFil_c1_fetal$Reads
+
+#NEXT: try using data2 instead of eFilc1_fetal. separate out fetal samples from data2 bc i think you made the eFilc1 fetal wrong 
+
+# computing normalized counts (between sample normalization of miRNA expression)
+norm_counts_c1 <- DGEList(genes = filtered_mirna_names,
+                          counts = reads_cluster_1,
+                          samples = samples_cluster_1)
+
+##****** what numeric value is counts supposed to be? in eFil_c1_fetal, there are 16 non-numeric variables . to keep moving on for now i will set counts = eFil_c1_fetal to the reads column - nowreads = reads_cluster_1,
+
+
+norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
+
+head(norm_counts_c1[["samples"]]) # the norm.factors is the numerical adjustment value that will be applied to the raw expression
+
+# performing within sample normalization of miRNA expression (CPM = Counts per Million = RPM = Reads per Million)
+eNorm_c1 <- cpm(norm_counts_c1)
+
+# converting to our usual log2(x+1) expression
+eNorm_c1 <- log2(eNorm_c1 + 1)
+
+# converting the expression counts into whole numbers
+eNorm_c1 <- round(eNorm_c1, digits = 0)
+
+eNorm_c1 <- as.data.frame(eNorm_c1)
 
 ```
 
