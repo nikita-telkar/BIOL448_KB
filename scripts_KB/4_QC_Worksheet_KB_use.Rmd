@@ -843,17 +843,16 @@ ggarrange(b2, d2, b3, d3, b4, d4, b5, d5, b6, d6, nrow = 5, ncol = 2)
 
 **What do you think is the interpretation of the normalized plots? i.e., What are the differences between the normalized and raw-filtered plots?**  
 
+The filtering gets rid of the extreme outliers and gives us a better visual depiction and analysis of the true expression data (or the data that is valuable to us). The filtering also only keeps miRNAs that are expresssed in at least 10% of the samples. This filters out miRNAs that do not have expression differences that affect the vast majority of the samples and helps us narrow down the data we would like to analyze. The normalization stored the data more logically and removes redundant data. 
 
 
 **Save the below objects**  
 
 ```{r save, eval=FALSE}
-# 
-# write_rds(eFil, )
-# write_rds(eNorm_c1, )
-# write_rds(eNorm_c2, )
 
-## write_rds(mDat, here::here("data", "mDat.rds"))
+ # write_rds(eFil, here::here("data", "eFil.rds"))
+ # write_rds(eNorm_c1, here::here("data", "eNorm_c1.rds"))
+ # write_rds(eNorm_c2, here::here("data", "eNorm_c2.rds"))
 
 
 ```
