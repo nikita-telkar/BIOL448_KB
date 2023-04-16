@@ -1,0 +1,837 @@
+---
+title: "KIRC: Differential Analysis" 
+author: "Katya Benard"
+date: "April 2023"
+output: 
+  html_document: 
+    keep_md: yes 
+    toc: true  
+    toc_depth: 4
+    toc_float: 
+      collapsed: false 
+      smooth_scroll: true
+    theme: flatly  
+    highlight: haddock
+---
+
+***
+
+### 0.0 Introduction  
+
+After going through my own LIHC analysis, I realized that the filtering method of `expression >= 1 in all 10 fetal smaples` that we've used is too stringent. We're going to redo the filtering and normalization for both clusters, and then proceed with differential analysis. 
+
+### 1.0 Loading Packages and Data  
+
+Loading all of our packages:  
+
+```{r packages, error=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+# rmarkdown packages
+library(knitr) 
+library(rmarkdown)
+
+# data wrangling packages
+library(tidyverse)
+library(janitor)
+
+# data loading packages
+library(readxl) 
+library(openxlsx)
+library(here)
+
+
+# setting global script options - i.e, parameters/arguents that will be applied to all chunks, without having to explicity specify them each time
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE)
+
+```
+
+Reading in data:  
+
+```{r data}
+pDat <- read_excel(here::here("data", "KIRC_pDat_replicates_removed.xlsx"))
+eDat <- read_rds(here::here("data", "KIRC_eDat_replicates_removed.RDS"))
+mDat <- read_rds(here::here("data", "KIRC_mDat.RDS"))
+ 
+# write_rds(mDat, "KIRC_mDat.RDS")
+
+```
+
+**Add your choice of font available at [Google Fonts](https://fonts.google.com/), and make your own customized ggplot2 theme**. We will now use this theme option for all future plots  
+
+```{r theme-and-colpal}
+
+library(showtext)
+library(extrafont)
+knitr::opts_chunk$set(fig.showtext = TRUE, fig_retina = 1) # needed to render show_text
+
+
+font_add_google("Open Sans", "Sans")
+
+colpal <- list(Condition = c(`Fetal` = "#ECB576", `NM` = "#115363", `Tumour` = "#A34237"),
+               Sex = c(`Male` = "#E05D5D", `Female` = "#ffb708"),
+               Self_reported_race = c(`Black or African American` = "#9BBC49", 
+                                      `Asian` = "#5B8D33", 
+                                      `White` = "#286E16", 
+                                      `Not Reported` = "#666666"))
+
+my_theme <- theme_minimal() +
+  theme(plot.title = element_text(family = "Sans", size = 14),
+        plot.subtitle = element_text(family = "Sans", size = 12),
+        legend.text = element_text(family = "Sans", size = 10),
+        axis.title = element_text(family = "Sans", size = 14),
+        axis.text = element_text(family = "Sans", size = 12))
+
+
+# needed to bind ggplot and our custom font
+showtext_auto()
+
+```
+
+***
+
+### 2.0 Formatting  
+
+**Make `eDat_long` as in the previous script, which contains the log2(x+1) expression data and phenotypic data all in one dataframe**  
+
+```{r eDat-long}
+
+eDat_long <- eDat %>% 
+  pivot_longer(cols = -c(precursor, miRNA), names_to = "Sample", values_to = "Reads") %>% 
+  left_join(pDat, by = "Sample") %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+```
+
+***
+
+### 3.0 Redoing filtering and normalization
+
+#### 3.1 Filtering
+
+**Based on the previous `4_QC` script, starting with our raw data, I want you to filter out miRNAs which have expression = 0 in all samples**  
+
+```{r fil-0}
+
+eDat <- eDat %>% 
+  unite("mirs", c(precursor, miRNA), sep = ":") %>% 
+  column_to_rownames("mirs")
+
+eFil_0 <- eDat %>% 
+   filter(if_any(everything(), ~ .x > 0))
+
+dim(eFil_0)
+# [1] 2739  565
+
+
+```
+
+> **CHECKPOINT:** Your `eFil_0` df should have 2739 rows and 565 columns  
+
+**Remove mature miRNAs with duplicate expression**  
+
+```{r efil}
+
+eFil <- eFil_0 %>% 
+  
+  
+
+dim(eFil)
+
+
+```
+
+> **CHECKPOINT:** Your `eFil` df should have 2519 rows and 565 columns  
+
+
+**Make separate eFils and pDats per KIRC cluster and by fetal, and join the fetal samples to both cluster 1 and cluster 2**
+
+```{r clusters}
+
+pDat %>% 
+  dplyr::count(cluster_group)
+
+# fetal filtered
+pDat_fetal <- 
+  
+eFil_fetal <- 
+
+
+# cluster 1 filtered
+pDat_cluster_1 <- 
+
+eFil_cluster_1 <- 
+
+
+# cluster 2 filtered
+pDat_cluster_2 <- 
+
+eFil_cluster_2 <- 
+
+
+
+# joining fetal and c1
+eFil_c1_fetal <- 
+
+pDat_c1_fetal <- 
+
+  
+# joining fetal and c2
+eFil_c2_fetal <- 
+
+pDat_c2_fetal <- 
+
+  
+```
+
+> **CHECKPOINT: You should have 289 samples in eDat_c1_fetal, and 286 samples in eDat_c2_fetal**  
+
+
+#### 3.2 Normalization
+
+**Normalize filtered dataframe for both cluster groups**
+
+```{r norm}
+
+library(DESeq2)
+library(edgeR)
+
+filtered_mirna_names <- as.data.frame(row.names(eFil)) 
+
+# cluster 1
+samples_cluster_1 <- pDat_c1_fetal$Sample
+
+norm_counts_c1 <- DGEList(genes = filtered_mirna_names, 
+                          counts = eFil_c1_fetal, 
+                          samples = samples_cluster_1)
+
+norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
+
+head(norm_counts_c1[["samples"]]) 
+
+eNorm_c1 <- cpm(norm_counts_c1)
+
+eNorm_c1 <- log2(eNorm_c1 + 1) 
+
+eNorm_c1 <- round(eNorm_c1, digits = 0)
+
+eNorm_c1 <- as.data.frame(eNorm_c1)
+
+
+# cluster 2
+samples_cluster_2 <- 
+
+
+```
+
+
+**Make density and boxplots for raw normalized data, and display all plots together (you should have a total of 6 plots)** 
+
+```{r norm-plots, fig.width=12, fig.height=9}
+
+library(ggpubr)
+
+eNorm_c1_long <- 
+
+eNorm_c2_long <- 
+  
+  
+# density
+d1 <- eDat_long %>% 
+  
+  
+d2 <- eNorm_c1_long %>% 
+
+
+d3 <- eNorm_c2_long %>% 
+
+
+# boxplot
+b1 <- 
+
+b2 <- 
+
+b3 <- 
+
+ggarrange(b1, d1, b2, d2, b3, d3, nrow = 3, ncol = 2)
+
+```
+
+Overwrite the previously saved eFil and eNorm objects 
+
+```{r save, eval=FALSE}
+
+
+```
+
+
+> We will only be using cluster 1 samples for all of our downstream analyses, and only using the cluster 2 samples at the end as a validation cohort.  
+
+***
+
+### 4.0 PCA  
+
+Principal Component Analysis (PCA) is a type of dimensionality reduction method. Dimensionality reduction techniques allow us to observe ‘big data’ in a meaningful way, where all of the expression data per sample per gene is converted into units showing the ‘distance’ i.e., similarity between them. Here we’ll be using PCA (tSNE and UMAP are two other methods), which reduces and converts our data points into distinct Principal Components (which have no units of measure) and shows us how much variability exists between our data, and which variables are contributing towards that variation
+
+#### 4.1 Calculating PCA
+
+
+```{r pca-c1}
+# first convert eNorm to log2 + 1
+eLog <- log2(eNorm_c1 + 1)
+
+# the function we use performs its operation row-wise, and since we want to check the variability between genes and not the samples, we'll transpose our exp df to convert the samples to be rows, and the columns to be our genes. Don't open this df as it might cause R to crash (as there will be more columns than rows in this df now)
+t_eLog <- as.data.frame(t(eLog))
+
+# the function to compute PCA. We set scale to FALSE, because we already log10 scaled our data, and center to TRUE, so that the values are converted to Z-scores
+pca_c1 <- prcomp(t_eLog, scale = FALSE, center = TRUE) #n has to be less than number of samples
+
+# each score represents the contribution of each gene within each sample
+scores_c1 <- pca_c1$x
+
+summary(pca_c1)
+
+```
+
+
+#### 4.2 Variation Explained by each PC
+
+Here, the summary output shows us the how much variability each PC is contributing in the Proportion of Variance row, and the total sum variability of each preceding PC in the Cumulative Proportion row. The Cumulative Proportion will always add up to a 100% at the last PC.   
+
+Number of PCs = Number of samples  
+
+```{r pca-metrics}
+
+# joining our PCA score to mDat
+scores_c1 <- scores_c1 %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Sample")
+
+mDat_c1 <- mDat %>% 
+  right_join(scores_c1, by = "Sample")
+
+
+
+# getting the data from the summary function we saw above  
+summary_c1 <- data.frame(PC = 1:289, 
+                         variation_explained = (pca_c1$sdev)^2 / sum((pca_c1$sdev)^2), 
+                         cumulative = cumsum(pca_c1$sdev^2 / sum(pca_c1$sdev^2)))
+
+summary_c1 <- summary_c1 %>% 
+  mutate(variation_perc = variation_explained * 100,
+         cumulative_perc = cumulative * 100,
+         PC = sort(as.factor(PC)))
+
+head(summary_c1)
+
+
+
+# visualising the variation contributed by each PC
+
+summary_c1 %>%
+  ggplot(aes(x = PC, y = variation_perc)) +
+  geom_bar(stat = "identity", fill = "forest green") +
+  coord_cartesian(y = c(0,100)) +
+  scale_y_continuous(breaks = seq(0,100,10), expand = c(0, 0)) +
+  theme_minimal() +
+  labs(title = "Variance Explained by each PC", subtitle = "Normalized Expression of 2519 miRNAs", 
+       x = "Principal Components", y = "Variance Explained")
+
+# only the first 50 PCs
+summary_c1 %>%
+  dplyr::slice(1:50) %>%
+  ggplot(aes(x = PC, y = variation_perc)) +
+  geom_bar(stat = "identity", fill = "forest green") +
+  coord_cartesian(y = c(0,100)) +
+  scale_y_continuous(breaks = seq(0,100,10), expand = c(0, 0)) +
+  theme_minimal() +
+  labs(title = "Variance Explained by each PC", subtitle = "Normalized Expression of 2519 miRNAs", 
+       x = "Principal Components", y = "Variance Explained")
+
+
+summary_c1 %>%
+  dplyr::slice(1:50) %>% 
+  ggplot(aes(x = PC, y = cumulative_perc)) +
+  geom_bar(stat = "identity", fill = "forest green") +
+  coord_cartesian(y = c(0,100)) +
+  scale_y_continuous(breaks = seq(0,100,10), expand = c(0, 0)) +
+  theme_minimal() +
+  labs(title = "Variance Explained by each PC", subtitle = "Normalized Expression of 2519 miRNAs", 
+       x = "Principal Components", y = "Variance Explained")
+
+
+```
+
+We see from the summary and the plots, that PC1 is contributing about 10% of the variance, PC2 5%, and so on, to add up to 100% at PC289  
+
+
+#### 4.3 Variables contributing to the variation for each PC
+
+##### 4.3.1 Variation esitmate by P-value
+
+We’ll now check which of our variables actually contribute towards the PCs and drive variance within each PC 
+
+```{r variable-pca-correlation}
+
+library(kableExtra)
+library(plomics)
+
+# Selecting the variables of interest
+pDat_cor <- mDat_c1 %>% 
+  dplyr::select(Sample, Condition, Sex, Self_reported_race, Total_Mapped_on_Precursor_or_miRNA) %>% 
+  column_to_rownames("Sample")
+
+
+scores_c1 <- scores_c1 %>% 
+  column_to_rownames("Sample")
+
+# calculating the pvalue significance of the above variables by PC
+pca_c1_pval <- plomics::lmmatrix(dep = scores_c1, ind = pDat_cor, metric = "Pvalue") # correlation matrix
+
+# transposing
+pca_c1_pval <- t(pca_c1_pval) # only for visual purposes - Not being used for any calculations
+
+
+
+# displaying the results for the first 15 in a table highlighting the variables significantly contributing towards each PC
+pca_c1_pval %>% 
+  as.data.frame() %>% 
+  dplyr::slice(1:20) %>% 
+  mutate(across(everything(), round, 3)) %>% 
+  mutate(across(everything(), ~cell_spec(.x, color = ifelse(.x <= 0.05, "green", "")))) %>% 
+  kable(escape = F) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", full_width = F, fixed_thead = T))
+
+```
+
+
+Looks like all 3 of our variables contribute very significantly towards expression - we'll now display the results as a plot rather than a table
+
+
+```{r pval-plot}
+
+pca_c1_plot <- pca_c1_pval %>% 
+  as.data.frame %>% 
+  dplyr::slice(1:20) %>% 
+  mutate(Principal_Component = rownames(pca_c1_pval)[1:20],
+         PC = as.factor(1:20)) %>% 
+  pivot_longer(cols = -c(Principal_Component, PC), names_to = "Variable", values_to = "pval") %>%
+  mutate(pval_cat = factor(case_when(
+    pval > 0.05  ~ "> 0.05",
+    pval < 0.05 & pval > 0.01 ~ "< 0.05",
+    pval < 0.01 & pval > 0.001 ~ "< 0.01",
+    pval < 0.001 ~ "< 0.001"), 
+    levels = c("> 0.05", "< 0.05", "< 0.01", "< 0.001")))
+
+
+# making a colour palette for the above plot
+pc_colpal <- c("white", "#c7dfba", "#8ebe78", "#509e36")
+# setting the levels of the pval_cat factor column to the colours in pc_colpal
+names(pc_colpal) <- levels(pca_c1_plot$pval_cat)
+
+
+pca_c1_plot %>% 
+  ggplot(aes(x = PC, y = Variable , fill = pval_cat)) +
+  geom_tile(col = "lightgray") +
+  theme_bw() +
+  scale_x_discrete(expand = c(0, 0)) + #expand function fits the plot to its assigned dimesions 
+  scale_y_discrete(expand = c(0, 0)) +
+  scale_fill_manual(values = pc_colpal)  + 
+  coord_fixed() + # very important otherwise height of each tile is elongated!
+  labs(title = "Contribution of Variables to Observed Expression\n", x = "", y = "", fill = "P value")
+
+```
+
+##### 4.3.2 Variation esitmate by R-Squared
+
+For the above, we've used p-value as a metric. We'll now calculate the R-squared value for each variable  
+
+**Can you explain what an R-squared value is?**  
+
+```{r rsq-plot}
+
+pca_c1_rsq <- lmmatrix(dep = scores_c1, ind = pDat_cor, metric = "Rsquared") # correlation matrix
+
+pca_c1_rsq <- t(pca_c1_rsq)
+
+rsq_c1_plot <- pca_c1_rsq %>% 
+  as.data.frame %>% 
+  dplyr::slice(1:20) %>% 
+  mutate(Principal_Component = rownames(pca_c1_rsq)[1:20],
+         PC = as.factor(1:20)) %>% 
+  pivot_longer(cols = -c(Principal_Component, PC), names_to = "Variable", values_to = "rsq")
+
+rsq_c1_plot %>% 
+  ggplot(aes(x = PC, y = Variable , fill = rsq)) +
+  geom_tile(col = "lightgray") +
+  theme_bw() +
+  scale_x_discrete(expand = c(0, 0)) + #expand function fits the plot to its assigned dimensions 
+  scale_y_discrete(expand = c(0, 0)) +
+  scale_fill_gradient(low = "white", high = "#509e36") +
+  coord_fixed() + # very important otherwise height of each tile is elongated!
+  labs(x = "", y = "", fill = "Rsq")
+
+```
+
+#### 4.4 PCA Plots
+
+Viewing the pval and rsq plots together:
+
+
+```{r pca-plots, fig.height=5}
+
+p1 <- pca_c1_plot %>% 
+  ggplot(aes(x = PC, y = Variable , fill = pval_cat)) +
+  geom_tile(col = "lightgray") +
+  theme_bw() +
+  scale_x_discrete(expand = c(0, 0)) + #expand function fits the plot to its assigned dimesions 
+  scale_y_discrete(expand = c(0, 0)) +
+  scale_fill_manual(values = pc_colpal)  + 
+  coord_fixed() + # very important otherwise height of each tile is elongated!
+  labs(title = "Contribution of Variables to Observed Expression\n", x = "", y = "", fill = "P value")
+
+r1 <- rsq_c1_plot %>% 
+  ggplot(aes(x = PC, y = Variable , fill = rsq)) +
+  geom_tile(col = "lightgray") +
+  theme_bw() +
+  scale_x_discrete(expand = c(0, 0)) + #expand function fits the plot to its assigned dimesions 
+  scale_y_discrete(expand = c(0, 0)) +
+  scale_fill_gradient(low = "white", high = "#509e36") +
+  coord_fixed() + # very important otherwise height of each tile is elongated!
+  labs(x = "", y = "", fill = "Rsq")
+
+egg::ggarrange(p1, r1, nrow = 2, ncol = 1, heights = c(3,3)) 
+
+```
+
+
+**Make plots showing the separation of samples by the computed PC per sample**  
+
+Using mDat:  
+
+1. Make a new column bucketing the `Total_Mapped_on_Precursor_or_miRNA` variable into separate categories (turning this continuous variable into a categorical one), and then show how many samples fall into each of the categories. The number of categories you split the samples into is your choice    
+2. Make separate scatter plots for PC1 vs PC2 and PC2 vs PC3 for all the above 4 variables  
+3. Set the x- and y-axis limits as the same number (from negative x to positive x)  
+4. Colour by variable  
+5. Set the `fig.height` and `fig.width` as the same value, so that the plot is a square shape  
+ 
+*Hint: Use `coord_cartesian` to set the axes limits*  
+
+```{r pca-plots-vars, fig.height=6, fig.width=6}
+
+ 
+```
+
+***
+
+### 5.0 Differential Expression  
+
+#### 5.1 Unstratified 
+
+We're going to use the Wilcoxon Rank Sum test to test for expression differences between our samples  
+
+**Can you write down what this test measures?**  
+
+
+```{r comparison-dfs, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
+
+
+# making separate eDat and pDats for our combinations
+NM_Tumour_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "Fetal")
+NM_Tumour_eDat <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Tumour_pDat$Sample))
+
+NM_Fetal_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "Tumour")
+NM_Fetal_eDat <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Fetal_pDat$Sample))
+
+Tumour_Fetal_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "NM")
+Tumour_Fetal_eDat <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% Tumour_Fetal_pDat$Sample))
+
+Condition <- pDat_c1_fetal %>% 
+  dplyr::select(Sample, Condition)
+Condition$Condition <- as.factor(Condition$Condition)
+
+```
+
+Now, we want to apply the test per miRNA - and that means running the test 2519 times, which is not something we should be doing manually. And in such cases where we want to be applying the same steps over and over again, we can use a [for-loop](https://intro2r.com/loops.html) which will reiterate the same steps over different inputs  
+
+I'll show how the test works for one miRNA  
+
+```{r wilcox-test, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
+
+# package
+library(coin)
+
+
+# showing how the test works for one miRNA
+
+test_mirna <- Tumour_Fetal_eDat %>% 
+  
+  # selecting the first miRNA
+  dplyr::slice(1) %>% 
+  
+  # the wilcox test in R requires to transpose the df so that ou samples are rows, and miRNAs are columns
+  t() %>% 
+  
+  # when we transpose a df, it turns into a matrix
+  as.data.frame() %>% 
+  rownames_to_column("Sample") %>% 
+  left_join(Condition, by = "Sample")
+
+# running the test
+test_wilcox <- wilcox_test(test_mirna$`hsa-let-7a-2-3p` ~ test_mirna$Condition)
+
+# pvalue for this miRNA between tumour and NM
+test_pvalue <- pvalue(test_wilcox)
+test_pvalue
+
+
+```
+
+**What is multiple-testing correction, and why is it important?**  
+
+
+Now, when writing the for loop, we have to ensure that all of our inputs have the same value, cause we can't be writing the name of each miRNA (as above for hsa-let-7a-2-3p) within the function. 
+
+```{r wilcox, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
+
+#NM-Tumour
+
+# making an empty value which has the same number of rows as our miRNAs. 
+#We will be storing all of our test output results within this value
+pvals_NM_Tumour <- rep(NA, nrow(eNorm_c1)) 
+
+# Here, I'm saying that for each row of NM_Tumour_eDat SEPARATELY
+for(i in 1:nrow(NM_Tumour_eDat)){ 
+  
+  # assign x as an miRNA. the i signifies that the value will change each time, 
+  # starting with row 1 all the way to the last row/miRNA
+  x <- as.data.frame(t(NM_Tumour_eDat[i,]))
+  
+# as the name for each miRNA is different, we will just name that column miRNA
+  colnames(x)[1] <- "miRNA"
+  
+  # join our sample conditions as we did above for this miRNA
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  
+  # assign a1 as the output of the test as above
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  
+  # assign the p-value of this miRNA to it's corresponding row i (i.e., 1, 2, 3...) within the empty value
+  # So if the miRNA we're testing is the 5th miRNA in the eDat, the pvalue of this miRNA will be assigned to row 5
+  pvals_NM_Tumour[i] <- pvalue(a1) 
+  
+}
+
+pvals_NM_Tumour <- as.data.frame(pvals_NM_Tumour)
+
+# multiple testing correction
+pvals_NM_Tumour$pvals_NM_Tumour_adj <- p.adjust(pvals_NM_Tumour$pvals_NM_Tumour, method = "fdr")
+
+
+
+# NM-Fetal
+pvals_NM_Fetal <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(NM_Fetal_eDat)){ 
+  x <- as.data.frame(t(NM_Fetal_eDat[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_NM_Fetal[i] <- pvalue(a1) 
+}
+pvals_NM_Fetal <- as.data.frame(pvals_NM_Fetal)
+pvals_NM_Fetal$pvals_NM_Fetal_adj <- p.adjust(pvals_NM_Fetal$pvals_NM_Fetal, method = "fdr")
+
+# Tumour-Fetal
+pvals_Tumour_Fetal <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(Tumour_Fetal_eDat)){ 
+  x <- as.data.frame(t(Tumour_Fetal_eDat[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_Tumour_Fetal[i] <- pvalue(a1) 
+}
+pvals_Tumour_Fetal <- as.data.frame(pvals_Tumour_Fetal)
+pvals_Tumour_Fetal$pvals_Tumour_Fetal_adj <- p.adjust(pvals_Tumour_Fetal$pvals_Tumour_Fetal, method = "fdr")
+
+
+```
+
+
+```{r join-pval-wilcox, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
+
+
+# joining all 3
+pval_mirs <- as.data.frame(rownames(eNorm_c1))
+colnames(pval_mirs)[1] <- "miRNA"
+
+pval_mirs <- cbind(pval_mirs, pvals_NM_Tumour, pvals_NM_Fetal, pvals_Tumour_Fetal)
+pval_mirs <- pval_mirs %>% 
+  column_to_rownames("miRNA")
+
+pval_mirs <- round(pval_mirs, digits = 2)
+
+pval_mirs <- pval_mirs %>% 
+  rownames_to_column("miRNA")
+
+head(pval_mirs)
+
+```
+
+**Save `pval_mirs` as an Excel file**  
+
+```{r, eval=FALSE}
+
+# write.xlsx(pval_mirs, "pval_mirs.xlsx")
+
+```
+
+
+
+**Now, select the miRNAs which are significant at a pvalue <= 0.05 in NM-Tumour and NM-Fetal, but not significant in Tumour-Fetal**  
+
+```{r oncofetal-mirs, cache = TRUE}
+
+oncofetal_mirs <- pval_mirs 
+
+nrow(oncofetal_mirs)
+
+head(oncofetal_mirs)
+
+```
+
+
+ > CHECKPOINT: You should have 0 oncofetal renal miRNAs 
+ 
+
+#### 5.2 Sex-Stratified 
+ 
+ **Repeat the above, but this time dividing up the male and female samples from cluster 1, and running the test individually**  
+ 
+
+```{r sex}
+
+males <- pDat_c1_fetal %>% 
+
+males_eDat <- eNorm_c1 %>% 
+
+  
+females <- pDat_c1_fetal %>% 
+ 
+females_eDat <- eNorm_c1 %>% 
+
+
+```
+
+ > CHECKPOINT: You should have 189 male samples, and 90 female samples within cluster 1  
+
+```{r males, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+
+
+NM_Tumour_pDat <- pDat_c1_fetal %>% 
+
+NM_Tumour_eDat <- eNorm_c1 %>% 
+  
+
+NM_Fetal_pDat <- pDat_c1_fetal %>% 
+  
+  
+NM_Fetal_eDat <- eNorm_c1 %>% 
+  
+
+Tumour_Fetal_pDat <- pDat_c1_fetal %>% 
+  
+  
+Tumour_Fetal_eDat <- eNorm_c1 %>% 
+  
+
+Condition <- pDat_c1_fetal %>% 
+  dplyr::select(Sample, Condition)
+Condition$Condition <- as.factor(Condition$Condition)
+
+
+
+# WILCOXIN MANN-WHITNEY-U TEST FOR MALES
+
+# NM-Tumour
+
+
+# NM-Fetal
+
+
+# Tumour-Fetal
+
+
+# joining all 3
+pval_mirs_male <- 
+
+pval_mirs_male_round <- round(pval_mirs_male, digits = 2)
+
+pval_mirs_male_round <- pval_mirs_male_round %>% 
+  rownames_to_column("miRNA")
+
+head(pval_mirs_male_round)
+
+
+
+oncofetal_mirs_male <- 
+
+
+nrow(oncofetal_mirs_male)
+
+head(oncofetal_mirs_male)
+
+
+```
+
+> CHECKPOINT: You should have 85 male-specific oncofetal renal miRNAs 
+
+
+```{r females, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+
+
+
+
+
+oncofetal_mirs_female <- 
+
+
+nrow(oncofetal_mirs_female)
+
+head(oncofetal_mirs_female)
+
+
+```
+
+> CHECKPOINT: You should have 0 female-specific oncofetal renal miRNAs 
+
+
+**Save the male-specific oncofetal miRNAs**
+
+```{r, eval=FALSE}
+
+# write.xlsx(oncofetal_mirs_male, "oncofetal_mirs_male.xlsx")
+
+```
+
+***
+
+End of Script  
+
+***
+
+
+
+
+
+
