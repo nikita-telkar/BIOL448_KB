@@ -292,8 +292,8 @@ eFil_1_10 <- eFil_fetal_filtered %>%
   rownames_to_column("miRNA")
   
 
-eDat <- eDat %>% 
-  rownames_to_column("miRNA")
+# eDat <- eDat %>% 
+#   rownames_to_column("miRNA")
 
  eFil <- eFil_1_10 %>% 
   dplyr::select (miRNA) %>% 
@@ -406,9 +406,9 @@ eFil <- eFil %>%
 
 
 
-eFil <- eDat %>% 
- left_join(eDat, by = "miRNA") 
-dim(eFil)
+# eFil <- eDat %>% 
+#  left_join(eDat, by = "miRNA") 
+# dim(eFil)
 # now it's 2887 1131
 
 
@@ -458,10 +458,11 @@ data2 <- data %>%
   column_to_rownames("miRNA")
 
 dim(data2)
+
+# I will be continuing to use data2 instead of eFil
+
 #874 566
 
-#eFil_long$condition <- c(rep(10,"fetal"), rep(70, "normal"), rep(423016, "tumour"))
-  
 
 ```
 
@@ -476,26 +477,22 @@ dim(data2)
 # data2 <- data2 %>% 
 #   rownames_to_column("miRNA")
 
-#following line won't run unless i run the line above
 eFil_long <- data2 %>% 
   pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
-
-# eFil_long_2 <- eFil_long %>% 
-#   mutate(Condition = eDat_long$Condition[match(Sample, eDat_long$Sample)])
-# forgot I could left join by pDat
 
 eFil_long_2 <- eFil_long %>% 
   left_join(pDat, by = "Sample")
 
 eFil_long_2 <- eFil_long_2 %>% 
   mutate(log2Reads = log2(Reads + 1))
+#---------------------------------------------------------------------
 
 d1 <- eFil_long_2 %>% 
   ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.6) +
   scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
   # scale_colour_manual(values = colpal$Condition) +
-  labs(title = "KIRC: Filtered Expression Data", y = "log2(Reads + 1)") +
+  labs(title = "KIRC: All Filtered Expression Data", y = "log2(Reads + 1)") +
   theme_minimal() 
 
 #what goes here? unfiltered raw data maybe 
@@ -504,7 +501,7 @@ d2 <-  eDat_long %>%
   geom_density(alpha = 0.6) +
   scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
   # scale_colour_manual(values = colpal$Condition) +
-  labs(title = "KIRC: Raw Expression Data", y = "log2(Reads + 1)") +
+  labs(title = "KIRC: Raw Expression Data (eDat) ", y = "log2Reads") +
   theme_minimal() 
 
 
@@ -515,6 +512,7 @@ b1 <- eFil_long_2 %>%
   geom_boxplot() +
   scale_fill_manual(values = colpal$Condition) +
   scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: All Filtered Expression Data", y = "log2(Reads + 1)") +
   theme_minimal() 
 
 #what goes here?
@@ -522,7 +520,8 @@ b2 <- eDat_long %>%
   ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
   geom_boxplot() +
   scale_fill_manual(values = colpal$Condition) +
-  scale_colour_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) + 
+  labs(title = "KIRC: Raw Expression Data (eDat) ", y = "log2Reads") +
   theme_minimal() 
 
 
@@ -624,24 +623,23 @@ d4 <- eFil_c2_fetal %>%
   labs(title = "KIRC: C2 Filtered Expression Data", y = "log2(Reads + 1)") +
   theme_minimal()
 
-
-#look into better ways to separate the data - not by sex, and modify later when reviewing script - you likely assigned the wrong dataframes to each plot that Nikita intended for you to make - check LIHC script plots for reference
-
-b3 <-  pDat_c1_fetal %>% 
-  ggplot(aes(x = Condition, y = Sex, fill = Condition, colour = Condition)) +
+b3 <-  eFil_c1_fetal %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
   geom_boxplot() +
   scale_fill_manual(values = colpal$Condition) +
   scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Filtered Expression Data", y = "log2(Reads + 1)") +
   theme_minimal()
 
-
-b4 <-  pDat_c2_fetal %>% 
-  ggplot(aes(x = Condition, y = Sex, fill = Condition, colour = Condition)) +
+b4 <-  eFil_c2_fetal %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
   geom_boxplot() +
   scale_fill_manual(values = colpal$Condition) +
   scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Filtered Expression Data", y = "log2(Reads + 1)") +
   theme_minimal()
 
+ 
 #b1 and d1 correspond to eFil plots previously made 
 ggarrange(b1, d1, b3, d3, b4, d4, nrow = 3, ncol = 2)
 
@@ -660,45 +658,81 @@ Normalization takes into account the full expression dataset that we have, and a
 We’re going to use the [Relative Log Expression](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0206312#:~:text=Relative%20Log%20Expression%20(RLE)%3A,geometric%20mean%20across%20all%20samples.) method of normalization, and now that we've separated our samples into 2 datasets by cluster, we're going to normalize each one separately:  
 
 ```{r norm-c1}
-eDat <- eFil %>% 
+library(DESeq2)
+library(edgeR)
+
+data2 <- data2 %>% 
+  rownames_to_column("miRNA")
+
+#aka filtered_mirna_names 
+eDat_matrix <- data2 %>% 
   column_to_rownames("miRNA") %>% 
   as.matrix()
 
-eNorm <- as.data.frame(row.names(eDat))
-norm <- DGEList(counts = eDat, samples = pDat$Sample, genes = eNorm)
-dge <- calcNormFactors(norm, method = "RLE")
-rle <- cpm(dge)
-rle <- as.data.frame(rle)
+eNorm <- as.data.frame(row.names(eDat_matrix))
 
+all_cols <- colnames(eDat_matrix)
 
-library(DESeq2)
-library(edgeR)
+c1_fetal_cols <- all_cols[colnames(eDat_matrix) %in% pDat_c1_fetal$Sample]
+c2_fetal_cols <- all_cols[colnames(eDat_matrix) %in% pDat_c2_fetal$Sample]
+
+# Create new data frames
+c1_fetal_matrix <- eDat_matrix[, c1_cols]
+c2_fetal_matrix <- eDat_matrix[, c2_cols]
+
+norm <- DGEList(counts = eDat_matrix, samples = pDat$Sample, genes = eNorm)
+
+ #splitting eDat_matrix because otherwise i get this error:
+# Error in DGEList(counts = eDat_matrix, samples = pDat_c1_fetal$Sample,  : 
+#   Number of rows in 'samples' must equal number of columns in 'counts'
+
+norm_c1 <- DGEList(counts = c1_fetal_matrix, samples = pDat_c1_fetal$Sample, genes = eNorm)
+
+# norm <- calcNormFactors(norm, method = "RLE")
+# 
+# head(norm[["samples"]])
+# 
+# eNorm_all <- cpm(norm)
+# eNorm_all <- log2(eNorm_all + 1)
+# 
+# eNorm_all <- round(eNorm_all, digits = 0)
+# 
+# eNorm_all <- as.data.frame(eNorm_all)
+
+# rle <- cpm(dge)
+# rle <- as.data.frame(rle)
+#from LIHC normalization section 
+
+#-----------------------------
 
 #provided script will not run as is and produces this error:
 # Error in DGEList(genes = filtered_mirna_names, counts = eFil_c1_fetal,  : 
 #   The count matrix is a data.frame instead of a matrix and 16 columns are non-numeric.
 #   Should these columns be gene annotation instead of counts?
 
-filtered_mirna_names <- as.data.frame(row.names(eFil)) # only making filtered_mirna_names once as the miRNAs are the same between both clusters
-samples_cluster_1 <- pDat_c1_fetal$Sample 
-reads_cluster_1 <- eFil_c1_fetal$Reads
+#filtered_mirna_names <- as.data.frame(row.names(eFil)) # only making filtered_mirna_names once as the miRNAs are the same between both clusters
+# samples_cluster_1 <- pDat_c1_fetal$Sample 
+# reads_cluster_1 <- eFil_c1_fetal$Reads
 
-#NEXT: try using data2 instead of eFilc1_fetal. separate out fetal samples from data2 bc i think you made the eFilc1 fetal wrong 
-
+#--------------------------------------------------------------------------------------
 # computing normalized counts (between sample normalization of miRNA expression)
-norm_counts_c1 <- DGEList(genes = filtered_mirna_names,
-                          counts = reads_cluster_1,
-                          samples = samples_cluster_1)
+# norm_counts_c1 <- DGEList(genes = eDat_matrix,
+#                           counts = reads_cluster_1,
+#                           samples = samples_cluster_1)
 
-##****** what numeric value is counts supposed to be? in eFil_c1_fetal, there are 16 non-numeric variables . to keep moving on for now i will set counts = eFil_c1_fetal to the reads column - nowreads = reads_cluster_1,
+#Error in DGEList(genes = eDat_matrix, counts = reads_cluster_1, samples = samples_cluster_1) : 
+ # Number of rows in 'samples' must equal number of columns in 'counts'
 
+#fix this - ^ how can i get the rows in samples to = the column size in counts? samples : chr [1:289] & counts : 252586 elements 
 
-norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
+#--------------------------------------------------------------------------------------
 
-head(norm_counts_c1[["samples"]]) # the norm.factors is the numerical adjustment value that will be applied to the raw expression
+norm_c1 <- calcNormFactors(norm_c1, method = "RLE")
+
+head(norm_c1[["samples"]]) # the norm.factors is the numerical adjustment value that will be applied to the raw expression
 
 # performing within sample normalization of miRNA expression (CPM = Counts per Million = RPM = Reads per Million)
-eNorm_c1 <- cpm(norm_counts_c1)
+eNorm_c1 <- cpm(norm_c1)
 
 # converting to our usual log2(x+1) expression
 eNorm_c1 <- log2(eNorm_c1 + 1)
@@ -713,6 +747,22 @@ eNorm_c1 <- as.data.frame(eNorm_c1)
 **Repeat the above for cluster 2**  
 
 ```{r norm-c2}
+norm_c2 <- DGEList(counts = c2_fetal_matrix, samples = pDat_c2_fetal$Sample, genes = eNorm)
+
+norm_c2 <- calcNormFactors(norm_c2, method = "RLE")
+
+head(norm_c2[["samples"]]) # the norm.factors is the numerical adjustment value that will be applied to the raw expression
+
+# performing within sample normalization of miRNA expression (CPM = Counts per Million = RPM = Reads per Million)
+eNorm_c2 <- cpm(norm_c2)
+
+# converting to our usual log2(x+1) expression
+eNorm_c2 <- log2(eNorm_c2 + 1)
+
+# converting the expression counts into whole numbers
+eNorm_c2 <- round(eNorm_c2, digits = 0)
+
+eNorm_c2 <- as.data.frame(eNorm_c2)
 
 
 ```
@@ -721,28 +771,73 @@ eNorm_c1 <- as.data.frame(eNorm_c1)
 *Hint: make eNorm_long*  
 
 ```{r norm-plots, fig.width=10, fig.height=12}
+# eFil_long <- data2 %>% 
+#   pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
 # 
-# eNorm_c1_long <- eNorm_c1 %>% 
-#   
+# eFil_long_2 <- eFil_long %>% 
+#   left_join(pDat, by = "Sample")
 # 
-# eNorm_c2_long <- eNorm_c2 %>% 
-#   
-#   
-# 
-# d5 <- eNorm_c1_long %>% 
-# 
-#   
-# d6 <- eNorm_c2_long %>% 
-# 
-# 
-# b5 <- eNorm_c1_long %>% 
-# 
-# 
-# b6 <- eNorm_c2_long %>% 
-# 
-# 
-#   
-# ggarrange(b2, d2, b3, d3, b4, d4, b5, d5, b6, d6, nrow = 5, ncol = 2)
+# I don't think I need to use the log2reads column instead of reads anymore since the data has been normalized - but check with Nikita 
+# eFil_long_2 <- eFil_long_2 %>% 
+#   mutate(log2Reads = log2(Reads + 1))
+
+
+#make long & join pDat
+eNorm_c1 <- eNorm_c1 %>% 
+  rownames_to_column("miRNA")
+  
+eNorm_c1_long <- eNorm_c1 %>%
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
+
+eNorm_c1_long <- eNorm_c1_long %>% 
+  left_join(pDat_c1_fetal, by = "Sample")
+
+eNorm_c2 <- eNorm_c2 %>% 
+  rownames_to_column("miRNA")
+
+eNorm_c2_long <- eNorm_c2 %>%
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
+
+eNorm_c2_long <- eNorm_c2_long %>% 
+  left_join(pDat_c2_fetal, by = "Sample")
+
+#-------------------------------------------------------------------------------------------
+
+d5 <- eNorm_c1_long %>%
+ ggplot(aes(x = Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Normalized Expression Data", y = "Density") +
+  theme_minimal()
+
+d6 <- eNorm_c2_long %>%
+ ggplot(aes(x = Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Normalized Expression Data", y = "Density") +
+  theme_minimal()
+
+b5 <- eNorm_c1_long %>%
+ggplot(aes(x = Condition, y = Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Normalized Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal()
+
+b6 <- eNorm_c2_long %>%
+ggplot(aes(x = Condition, y = Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Normalized Expression Data", y = "log2(Reads + 1)") +
+  theme_minimal()
+
+
+
+ggarrange(b2, d2, b3, d3, b4, d4, b5, d5, b6, d6, nrow = 5, ncol = 2)
 
 ```
 
@@ -757,6 +852,9 @@ eNorm_c1 <- as.data.frame(eNorm_c1)
 # write_rds(eFil, )
 # write_rds(eNorm_c1, )
 # write_rds(eNorm_c2, )
+
+## write_rds(mDat, here::here("data", "mDat.rds"))
+
 
 ```
 
