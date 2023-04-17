@@ -131,12 +131,36 @@ dim(eFil_0)
 
 ```{r efil}
 
+eFil_0<- eFil_0 %>% 
+  rownames_to_column("miRNA")
+
+eFil_0 <- eFil_0 %>% 
+  dplyr::rename ("mirs" = "miRNA")
+
+eFil_0 %>% 
+  separate(mirs, c("precursor", "miRNA"), sep = ":") %>%
+  dplyr::count(miRNA) %>% # count the frequency of mature miRNAs
+  filter(n > 1) # filter to keep only the ones which have a count of more than 1
+
 eFil <- eFil_0 %>% 
-  
-  
+  separate(mirs, c("precursor", "miRNA"), sep = ":") %>% 
+  mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+  group_by(miRNA) %>% 
+  slice_max(Sum) %>% 
+  dplyr::select(-Sum, -precursor) %>%
+  distinct(miRNA, .keep_all = TRUE) %>%
+  column_to_rownames("miRNA")
+
+eDat <- eDat %>% 
+  rownames_to_column("miRNA")
+# split miRNA column in eDat to mirna and precursor 
+# re-left join eFil and eDat
+ eDat <- eDat %>% 
+   separate(miRNA, c("precursor", "miRNA"), sep = ":")
 
 dim(eFil)
-
+#220 duplicated expected
+#2519 565 produced 
 
 ```
 
@@ -146,40 +170,88 @@ dim(eFil)
 **Make separate eFils and pDats per KIRC cluster and by fetal, and join the fetal samples to both cluster 1 and cluster 2**
 
 ```{r clusters}
+#make matrix for eFil long
+eFil<- eFil %>% 
+  rownames_to_column("miRNA")
+
+library(dplyr)
+
+filtered_mature_df = data.frame(matrix(nrow = 2519, ncol = 1))
+filtered_mature_df$matrix.nrow...2519..ncol...1.<- eFil$miRNA
+colnames(filtered_mature_df) <- c("target")
+require(dplyr)
+data <- semi_join(eDat,filtered_mature_df, by = c(miRNA = "target"))
+row.names(data) <- data$gene
+
+
+data2 <- data %>% 
+  mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
+  group_by(miRNA) %>% 
+  slice_max(Sum) %>% 
+  dplyr::select(-Sum, -precursor) %>%
+  distinct(miRNA, .keep_all = TRUE) %>%
+  column_to_rownames("miRNA")
+
+dim(data2)
+
+#2519 565
+
+#make eFil_long
+
+data2<- data2 %>% 
+  rownames_to_column("miRNA")
+
+eFil_long <- data2 %>% 
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
+
+eFil_long_2 <- eFil_long %>% 
+  left_join(pDat, by = "Sample")
+
+eFil_long_2 <- eFil_long_2 %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+#------------------------------------------------------------------
 
 pDat %>% 
   dplyr::count(cluster_group)
 
 # fetal filtered
-pDat_fetal <- 
+pDat_fetal <- pDat %>% 
+    filter(Condition == "Fetal")
   
-eFil_fetal <- 
-
+eFil_fetal <-eFil_long_2 %>%
+  filter(Condition == "Fetal")
 
 # cluster 1 filtered
-pDat_cluster_1 <- 
 
-eFil_cluster_1 <- 
+pDat_cluster_1 <- pDat %>%
+  filter(cluster_group == 1)
 
+eFil_cluster_1 <- eFil_long_2 %>%
+  filter(cluster_group == 1)
 
 # cluster 2 filtered
-pDat_cluster_2 <- 
 
-eFil_cluster_2 <- 
+pDat_cluster_2 <- pDat %>%
+  filter(cluster_group ==2)
 
-
+eFil_cluster_2 <- eFil_long_2 %>%
+  filter(cluster_group == 2)
 
 # joining fetal and c1
-eFil_c1_fetal <- 
 
-pDat_c1_fetal <- 
+eFil_c1_fetal <- rbind(eFil_cluster_1,eFil_fetal)
 
+pDat_c1_fetal <- rbind(pDat_cluster_1, pDat_fetal)
+#has 289 samples
   
 # joining fetal and c2
-eFil_c2_fetal <- 
+eFil_c2_fetal <- rbind(eFil_cluster_2,eFil_fetal)
 
-pDat_c2_fetal <- 
+pDat_c2_fetal <- rbind(pDat_cluster_2, pDat_fetal)
+#has 286 samples
 
+#eDat or eFil?
   
 ```
 
@@ -191,8 +263,13 @@ pDat_c2_fetal <-
 **Normalize filtered dataframe for both cluster groups**
 
 ```{r norm}
+BiocManager::install("DESeq2")
 
+install.packages(DESeq2)
 library(DESeq2)
+
+BiocManager::install("edgeR")
+#install.packages(edgeR)
 library(edgeR)
 
 filtered_mirna_names <- as.data.frame(row.names(eFil)) 
@@ -200,6 +277,8 @@ filtered_mirna_names <- as.data.frame(row.names(eFil))
 # cluster 1
 samples_cluster_1 <- pDat_c1_fetal$Sample
 
+
+#----------- left off here 
 norm_counts_c1 <- DGEList(genes = filtered_mirna_names, 
                           counts = eFil_c1_fetal, 
                           samples = samples_cluster_1)
