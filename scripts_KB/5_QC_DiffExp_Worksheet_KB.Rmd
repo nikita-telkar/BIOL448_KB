@@ -66,13 +66,20 @@ knitr::opts_chunk$set(fig.showtext = TRUE, fig_retina = 1) # needed to render sh
 
 
 font_add_google("Open Sans", "Sans")
+# 
+# colpal <- list(Condition = c(`Fetal` = "#ECB576", `NM` = "#115363", `Tumour` = "#A34237"),
+#                Sex = c(`Male` = "#E05D5D", `Female` = "#ffb708"),
+#                Self_reported_race = c(`Black or African American` = "#9BBC49", 
+#                                       `Asian` = "#5B8D33", 
+#                                       `White` = "#286E16", 
+#                                       `Not Reported` = "#666666"))
 
-colpal <- list(Condition = c(`Fetal` = "#ECB576", `NM` = "#115363", `Tumour` = "#A34237"),
-               Sex = c(`Male` = "#E05D5D", `Female` = "#ffb708"),
-               Self_reported_race = c(`Black or African American` = "#9BBC49", 
-                                      `Asian` = "#5B8D33", 
-                                      `White` = "#286E16", 
-                                      `Not Reported` = "#666666"))
+colpal <- list(Condition = c(`Fetal` = "#4D6DA0", `NM` = "#72B592", `Tumour` = "#C5E3AA"),
+               Sex = c(`Male` = "#9dba8f", `Female` = "#edcba0"),
+               Self_Reported_Race = c(`African American or Black` = "#698ECF", `American Indian or Alaska Native` = "#565199", `Asian` = "#E26E51", `Caucasian or White` = "#F6D076", `Not Reported/Unknown` = "#de425b"), 
+               Self_reported_race = c(`Black or African American` = "#698ECF", `American Indian or Alaska Native` = "#565199", `Asian` = "#E26E51", `White` = "#F6D076", `Not Reported` = "#de425b"), category= c('50-55' = "#003f5c", '55-60' = "#2f4b7c", '60-65'="#665191", '65-70'="#a05195", '70-75'="#d45087", '75-80'="#f95d6a", '80-85'="#ff7c43", '85-90'="#ffa600", '90-95'="#F6D076", '95-100'="#C5E3AA"))
+
+
 
 my_theme <- theme_minimal() +
   theme(plot.title = element_text(family = "Sans", size = 14),
@@ -263,42 +270,86 @@ pDat_c2_fetal <- rbind(pDat_cluster_2, pDat_fetal)
 **Normalize filtered dataframe for both cluster groups**
 
 ```{r norm}
-BiocManager::install("DESeq2")
-
-install.packages(DESeq2)
+#BiocManager::install("DESeq2")
+#install.packages(DESeq2)
 library(DESeq2)
 
-BiocManager::install("edgeR")
+#BiocManager::install("edgeR")
 #install.packages(edgeR)
 library(edgeR)
 
 filtered_mirna_names <- as.data.frame(row.names(eFil)) 
 
+eDat_matrix <- data2 %>% 
+  column_to_rownames("miRNA") %>% 
+  as.matrix()
+
+eNorm <- as.data.frame(row.names(eDat_matrix))
+
+all_cols <- colnames(eDat_matrix)
+
+c1_fetal_cols <- all_cols[colnames(eDat_matrix) %in% pDat_c1_fetal$Sample]
+c2_fetal_cols <- all_cols[colnames(eDat_matrix) %in% pDat_c2_fetal$Sample]
+
+# Create new data frames
+c1_fetal_matrix <- eDat_matrix %>% 
+  as.data.frame() %>% 
+  dplyr::select(c1_fetal_cols)
+
+c2_fetal_matrix <- eDat_matrix %>% 
+  as.data.frame() %>% 
+  dplyr::select(c2_fetal_cols)
+
 # cluster 1
 samples_cluster_1 <- pDat_c1_fetal$Sample
 
+norm_c1 <- DGEList(counts = c1_fetal_matrix, samples = pDat_c1_fetal$Sample, genes = eNorm)
 
-#----------- left off here 
-norm_counts_c1 <- DGEList(genes = filtered_mirna_names, 
-                          counts = eFil_c1_fetal, 
-                          samples = samples_cluster_1)
+# norm_counts_c1 <- DGEList(genes = filtered_mirna_names, 
+#                           counts = eFil_c1_fetal, 
+#                           samples = samples_cluster_1)
 
-norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
+norm_c1 <- calcNormFactors(norm_c1, method = "RLE")
 
-head(norm_counts_c1[["samples"]]) 
+head(norm_c1[["samples"]])
 
-eNorm_c1 <- cpm(norm_counts_c1)
+eNorm_c1 <- cpm(norm_c1)
 
-eNorm_c1 <- log2(eNorm_c1 + 1) 
+#eNorm_c1 <- log2(eNorm_c1 + 1)
 
 eNorm_c1 <- round(eNorm_c1, digits = 0)
 
 eNorm_c1 <- as.data.frame(eNorm_c1)
+#------------------------------------------------------------------------------
+# norm_counts_c1 <- calcNormFactors(norm_counts_c1, method = "RLE")
+# 
+# head(norm_counts_c1[["samples"]]) 
+# 
+# eNorm_c1 <- cpm(norm_counts_c1)
+# 
+# eNorm_c1 <- log2(eNorm_c1 + 1) 
+# 
+# eNorm_c1 <- round(eNorm_c1, digits = 0)
+# 
+# eNorm_c1 <- as.data.frame(eNorm_c1)
 
 
 # cluster 2
-samples_cluster_2 <- 
+samples_cluster_2 <- pDat_c2_fetal$Sample
 
+norm_c2 <- DGEList(counts = c2_fetal_matrix, samples = pDat_c2_fetal$Sample, genes = eNorm)
+
+norm_c2 <- calcNormFactors(norm_c2, method = "RLE")
+
+head(norm_c2[["samples"]]) 
+
+eNorm_c2 <- cpm(norm_c2)
+
+#eNorm_c2 <- log2(eNorm_c2 + 1)
+
+eNorm_c2 <- round(eNorm_c2, digits = 0)
+
+eNorm_c2 <- as.data.frame(eNorm_c2)
 
 ```
 
@@ -309,27 +360,81 @@ samples_cluster_2 <-
 
 library(ggpubr)
 
-eNorm_c1_long <- 
+eNorm_c1 <- eNorm_c1 %>% 
+  rownames_to_column("miRNA")
+  
+eNorm_c1_long <- eNorm_c1 %>%
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
 
-eNorm_c2_long <- 
-  
-  
+eNorm_c1_long <- eNorm_c1_long %>% 
+  left_join(pDat_c1_fetal, by = "Sample")
+
+eNorm_c1_long <- eNorm_c1_long %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
+eNorm_c2 <- eNorm_c2 %>% 
+  rownames_to_column("miRNA")
+
+eNorm_c2_long <- eNorm_c2 %>%
+  pivot_longer(cols = -c(miRNA), names_to = "Sample", values_to = "Reads")
+
+eNorm_c2_long <- eNorm_c2_long %>% 
+  left_join(pDat_c2_fetal, by = "Sample")
+
+eNorm_c2_long <- eNorm_c2_long %>% 
+  mutate(log2Reads = log2(Reads + 1))
+
 # density
 d1 <- eDat_long %>% 
-  
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: Raw Expression Data (eDat) ", y = "log2Reads") +
+  theme_minimal() 
+
   
 d2 <- eNorm_c1_long %>% 
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Normalized Expression Data", y = "Density") +
+  theme_minimal()
 
 
 d3 <- eNorm_c2_long %>% 
-
+  ggplot(aes(x = log2Reads, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.6) +
+  scale_fill_manual(values = c("#de425b","#698ECF","#72B592")) +
+  # scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Normalized Expression Data", y = "Density") +
+  theme_minimal()
 
 # boxplot
-b1 <- 
+b1 <-eDat_long %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) + 
+  labs(title = "KIRC: Raw Expression Data (eDat) ", y = "log2Reads") +
+  theme_minimal() 
 
-b2 <- 
+b2 <- eNorm_c1_long %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C1 Normalized Expression Data", y = "log2Reads") +
+  theme_minimal()
 
-b3 <- 
+b3 <- eNorm_c2_long %>% 
+  ggplot(aes(x = Condition, y = log2Reads, fill = Condition, colour = Condition)) +
+  geom_boxplot() +
+  scale_fill_manual(values = colpal$Condition) +
+  scale_colour_manual(values = colpal$Condition) +
+  labs(title = "KIRC: C2 Normalized Expression Data", y = "log2Reads") +
+  theme_minimal()
 
 ggarrange(b1, d1, b2, d2, b3, d3, nrow = 3, ncol = 2)
 
@@ -338,8 +443,10 @@ ggarrange(b1, d1, b2, d2, b3, d3, nrow = 3, ncol = 2)
 Overwrite the previously saved eFil and eNorm objects 
 
 ```{r save, eval=FALSE}
-
-
+# HAVE NOT BEEN SAVED OR OVERWRITTEN YET - REVIEW WITH NIKITA FIRST 
+# write_rds(eFil, here::here("data", "eFil.rds"))
+# write_rds(eNorm_c1, here::here("data", "eNorm_c1.rds"))
+# write_rds(eNorm_c2, here::here("data", "eNorm_c2.rds"))
 ```
 
 
@@ -356,6 +463,10 @@ Principal Component Analysis (PCA) is a type of dimensionality reduction method.
 
 ```{r pca-c1}
 # first convert eNorm to log2 + 1
+
+eNorm_c1 <- eNorm_c1 %>% 
+  column_to_rownames("miRNA")
+
 eLog <- log2(eNorm_c1 + 1)
 
 # the function we use performs its operation row-wise, and since we want to check the variability between genes and not the samples, we'll transpose our exp df to convert the samples to be rows, and the columns to be our genes. Don't open this df as it might cause R to crash (as there will be more columns than rows in this df now)
@@ -525,6 +636,8 @@ pca_c1_plot %>%
 For the above, we've used p-value as a metric. We'll now calculate the R-squared value for each variable  
 
 **Can you explain what an R-squared value is?**  
+-> proportion of variation in the dependent variable that is predictable from the independent variable aka coefficient of variation
+- the higher the value, (ex. greater than 0.7) the greater the correlation 
 
 ```{r rsq-plot}
 
@@ -595,9 +708,115 @@ Using mDat:
  
 *Hint: Use `coord_cartesian` to set the axes limits*  
 
-```{r pca-plots-vars, fig.height=6, fig.width=6}
+```{r pca-plots-vars, fig.height=20, fig.width=10}
 
- 
+ #convert continuous variable into categorical variable 
+
+range(mDat$Total_Mapped_on_Precursor_or_miRNA)
+# 54.11895 92.98247
+breaks <- c(50,55,60,65,70,75,80,85,90,95,100)
+
+mDat_categorical <- mDat_c1
+
+mDat_categorical$category <- cut(mDat_categorical$Total_Mapped_on_Precursor_or_miRNA, breaks, labels = c("50-55", "55-60", "60-65", "65-70", "70-75", "75-80", "80-85", "85-90", "90-95", "95-100"))
+
+ggplot(mDat_categorical, aes(x=category)) +
+  geom_bar() +
+  coord_cartesian(ylim=c(0,250))
+
+# Im unsure what to graph here - ask 
+
+#4 variables = sex, self reported race, condition, total mapped on precursor or mirna 
+
+#PC1 vs PC2
+
+#sex
+g1 <- mDat_c1 %>% 
+  ggplot(aes(x = PC1, y = PC2, colour = Sex)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Sex) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+
+#self-reported race
+g2 <- mDat_c1 %>% 
+  ggplot(aes(x = PC1, y = PC2, colour = Self_reported_race)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Self_reported_race) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#condition
+g3 <- mDat_c1 %>% 
+  ggplot(aes(x = PC1, y = PC2, colour = Condition)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Condition) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#total mapped on precursor or mirna
+g4 <- mDat_categorical %>% 
+  ggplot(aes(x = PC1, y = PC2, colour = category)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$category) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#ggarrange(g1, g2, g3, g4, nrow = 2, ncol = 2)
+
+#PC2 vs PC3
+
+#sex
+g5 <- mDat_c1 %>% 
+  ggplot(aes(x = PC2, y = PC3, colour = Sex)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Sex) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#self-reported race
+g6 <- mDat_c1 %>% 
+  ggplot(aes(x = PC2, y = PC3, colour = Self_reported_race)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Self_reported_race) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#condition
+g7 <- mDat_c1 %>% 
+  ggplot(aes(x = PC2, y = PC3, colour = Condition)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$Condition) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+  theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+#total mapped on precursor or mirna
+g8 <- mDat_categorical %>% 
+  ggplot(aes(x = PC2, y = PC3, colour = category)) +
+  geom_point() +
+  scale_colour_manual(values = colpal$category) +
+  coord_cartesian(x = c(-50, 50), y = c(-50, 50)) +
+  my_theme +
+   theme(legend.position = "bottom") +
+  labs(title = "Filtered + Normalized")
+
+ggarrange(g1, g5, g2, g6, g3, g7, g4, g8, nrow = 4, ncol = 2)
+
 ```
 
 ***
@@ -609,10 +828,15 @@ Using mDat:
 We're going to use the Wilcoxon Rank Sum test to test for expression differences between our samples  
 
 **Can you write down what this test measures?**  
+- non parametric 
+  - data does not have to follow a distribution pattern 
+  
+- determines if two independent groups of observations come from populations with the same distribution patterns 
+- measure of difference in the ranks (not actual values) between two groups of samples 
 
+- the two groups have approximately equal ranks, the distribution is the same - test does not reject the null hypothesis 
 
 ```{r comparison-dfs, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
-
 
 # making separate eDat and pDats for our combinations
 NM_Tumour_pDat <- pDat_c1_fetal %>% 
@@ -645,7 +869,6 @@ I'll show how the test works for one miRNA
 # package
 library(coin)
 
-
 # showing how the test works for one miRNA
 
 test_mirna <- Tumour_Fetal_eDat %>% 
@@ -667,6 +890,8 @@ test_wilcox <- wilcox_test(test_mirna$`hsa-let-7a-2-3p` ~ test_mirna$Condition)
 # pvalue for this miRNA between tumour and NM
 test_pvalue <- pvalue(test_wilcox)
 test_pvalue
+
+# [1] 0.7161871
 
 
 ```
@@ -781,11 +1006,19 @@ head(pval_mirs)
 
 ```{r oncofetal-mirs, cache = TRUE}
 
-oncofetal_mirs <- pval_mirs 
+oncofetal_mirs <- pval_mirs %>% 
+  filter(pvals_NM_Tumour_adj <= 0.05 & pvals_NM_Fetal_adj <= 0.05 & pvals_Tumour_Fetal_adj >= 0.05)
+
+# oncofetal_mirs <- pval_mirs %>% 
+#   filter(pval_mirs, pvals_NM_Tumour >= 0.05 & pvals_NM_Fetal >= 0.05 & pvals_Tumour_Fetal < 0.05)
+
+#oncofetal_mirs <- filter(pval_mirs, pvals_NM_Tumour >= 0.05 & pvals_NM_Fetal >= 0.05 & pvals_Tumour_Fetal < 0.05)
+# this is wrong, produces 39 
 
 nrow(oncofetal_mirs)
 
 head(oncofetal_mirs)
+#produces 81
 
 ```
 
@@ -800,106 +1033,363 @@ head(oncofetal_mirs)
 
 ```{r sex}
 
+pDat_c1_fetal$Sex[pDat_c1_fetal$Sex == "M"]<-"Male"
+pDat_c1_fetal$Sex[pDat_c1_fetal$Sex == "F"]<-"Female"
+pDat_c2_fetal$Sex[pDat_c2_fetal$Sex == "M"]<-"Male"
+pDat_c2_fetal$Sex[pDat_c2_fetal$Sex == "F"]<-"Female"
+
 males <- pDat_c1_fetal %>% 
+  filter(Sex == "Male")
+
+#males_eDat <- all_cols[colnames(eNorm_c1) %in% males$Sample]
 
 males_eDat <- eNorm_c1 %>% 
+    dplyr::select(which(names(eNorm) %in% males$Sample))
 
   
 females <- pDat_c1_fetal %>% 
- 
+    filter(Sex == "Female")
+
+
+#females_eDat <- all_cols[colnames(eNorm_c1) %in% females$Sample]
 females_eDat <- eNorm_c1 %>% 
+    dplyr::select(which(names(eNorm) %in% females$Sample))
+
+
+#checkpoint values are wrong 
+
+#195 males, 94 females
+# maybe it's because we included fetal? but there are 6 male fetal 
+# 6 male fetal, 4 female fetal 
 
 
 ```
 
- > CHECKPOINT: You should have 189 male samples, and 90 female samples within cluster 1  
+ > CHECKPOINT: You should have 195 male samples, and 94 female samples within cluster 1  
 
 ```{r males, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
 
-
 NM_Tumour_pDat <- pDat_c1_fetal %>% 
-
-NM_Tumour_eDat <- eNorm_c1 %>% 
+  filter(Condition != "Fetal") 
   
+NM_Tumour_pDat_males <- NM_Tumour_pDat %>% 
+  filter(Sex == "Male")
+# now we get 189 males 
+# this excludes fetal samples 
+  
+NM_Tumour_eDat_males <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Tumour_pDat_males$Sample))
+
+#-------------------------------------------------------------------
 
 NM_Fetal_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "Tumour")
+
+NM_Fetal_pDat_males <- NM_Fetal_pDat %>% 
+  filter(Sex == "Male")
+#36
   
-  
-NM_Fetal_eDat <- eNorm_c1 %>% 
-  
+NM_Fetal_eDat_males <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Fetal_pDat_males$Sample))
+
+#-------------------------------------------------------------------
 
 Tumour_Fetal_pDat <- pDat_c1_fetal %>% 
-  
-  
-Tumour_Fetal_eDat <- eNorm_c1 %>% 
-  
+  filter(Condition != "NM")
 
-Condition <- pDat_c1_fetal %>% 
+Tumour_Fetal_pDat_males <- Tumour_Fetal_pDat %>% 
+  filter(Sex == "Male")
+  
+Tumour_Fetal_eDat_males <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% Tumour_Fetal_pDat_males$Sample))
+#165
+
+#-------------------------------------------------------------------
+pDat_c1_fetal_males <- pDat_c1_fetal %>% 
+  filter(Sex == "Male")
+
+Condition_males <- pDat_c1_fetal_males %>% 
   dplyr::select(Sample, Condition)
-Condition$Condition <- as.factor(Condition$Condition)
+Condition_males$Condition <- as.factor(Condition_males$Condition)
 
-
-
+#-------------------------------------------------------------------
 # WILCOXIN MANN-WHITNEY-U TEST FOR MALES
+#NM-Tumour
 
-# NM-Tumour
+# making an empty value which has the same number of rows as our miRNAs. 
+#We will be storing all of our test output results within this value
+pvals_NM_Tumour_males <- rep(NA, nrow(eNorm_c1)) 
+
+# Here, I'm saying that for each row of NM_Tumour_eDat SEPARATELY
+for(i in 1:nrow(NM_Tumour_eDat_males)){ 
+  
+  # assign x as an miRNA. the i signifies that the value will change each time, 
+  # starting with row 1 all the way to the last row/miRNA
+  x <- as.data.frame(t(NM_Tumour_eDat_males[i,]))
+  
+# as the name for each miRNA is different, we will just name that column miRNA
+  colnames(x)[1] <- "miRNA"
+  
+  # join our sample conditions as we did above for this miRNA
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  
+  # assign a1 as the output of the test as above
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  
+  # assign the p-value of this miRNA to it's corresponding row i (i.e., 1, 2, 3...) within the empty value
+  # So if the miRNA we're testing is the 5th miRNA in the eDat, the pvalue of this miRNA will be assigned to row 5
+  pvals_NM_Tumour_males[i] <- pvalue(a1) 
+  
+}
+
+pvals_NM_Tumour_males <- as.data.frame(pvals_NM_Tumour_males)
+
+# multiple testing correction
+pvals_NM_Tumour_males$pvals_NM_Tumour_adj <- p.adjust(pvals_NM_Tumour_males$pvals_NM_Tumour, method = "fdr")
+
 
 
 # NM-Fetal
-
+pvals_NM_Fetal_males <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(NM_Fetal_eDat_males)){ 
+  x <- as.data.frame(t(NM_Fetal_eDat_males[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_NM_Fetal_males[i] <- pvalue(a1) 
+}
+pvals_NM_Fetal_males <- as.data.frame(pvals_NM_Fetal_males)
+pvals_NM_Fetal_males$pvals_NM_Fetal_adj <- p.adjust(pvals_NM_Fetal_males$pvals_NM_Fetal, method = "fdr")
 
 # Tumour-Fetal
+pvals_Tumour_Fetal_males <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(Tumour_Fetal_eDat_males)){ 
+  x <- as.data.frame(t(Tumour_Fetal_eDat_males[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_Tumour_Fetal_males[i] <- pvalue(a1) 
+}
+pvals_Tumour_Fetal_males <- as.data.frame(pvals_Tumour_Fetal_males)
+pvals_Tumour_Fetal_males$pvals_Tumour_Fetal_adj <- p.adjust(pvals_Tumour_Fetal_males$pvals_Tumour_Fetal, method = "fdr")
+
+
+```
+
+
+```{r join-pval-wilcox, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
 
 
 # joining all 3
-pval_mirs_male <- 
+pval_mirs_males <- as.data.frame(rownames(eNorm_c1))
+colnames(pval_mirs_males)[1] <- "miRNA"
 
-pval_mirs_male_round <- round(pval_mirs_male, digits = 2)
+pval_mirs_males <- cbind(pval_mirs_males, pvals_NM_Tumour_males, pvals_NM_Fetal_males, pvals_Tumour_Fetal_males)
+pval_mirs_males <- pval_mirs_males %>% 
+  column_to_rownames("miRNA")
 
-pval_mirs_male_round <- pval_mirs_male_round %>% 
+pval_mirs_males <- round(pval_mirs_males, digits = 2)
+
+pval_mirs_males_round <- pval_mirs_males %>% 
   rownames_to_column("miRNA")
 
-head(pval_mirs_male_round)
+head(pval_mirs_males_round)
 
+#oncofetal mirs male
 
-
-oncofetal_mirs_male <- 
-
+oncofetal_mirs_male <- pval_mirs_males_round %>% 
+  filter(pvals_NM_Tumour_adj <= 0.05 & pvals_NM_Fetal_adj <= 0.05 & pvals_Tumour_Fetal_adj >= 0.05)
 
 nrow(oncofetal_mirs_male)
 
 head(oncofetal_mirs_male)
+#84
 
 
 ```
 
-> CHECKPOINT: You should have 85 male-specific oncofetal renal miRNAs 
+> CHECKPOINT: You should have 84 male-specific oncofetal renal miRNAs 
 
 
 ```{r females, message=FALSE, error=FALSE, warning=FALSE, echo=FALSE}
+NM_Tumour_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "Fetal") 
+  
+NM_Tumour_pDat_females <- NM_Tumour_pDat %>% 
+  filter(Sex == "Female")
+# now we get 90 females 
+# this excludes fetal samples 
+  
+NM_Tumour_eDat_females <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Tumour_pDat_females$Sample))
+
+#-------------------------------------------------------------------
+
+NM_Fetal_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "Tumour")
+
+NM_Fetal_pDat_females <- NM_Fetal_pDat %>% 
+  filter(Sex == "Female")
+#10
+  
+NM_Fetal_eDat_females <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% NM_Fetal_pDat_females$Sample))
+
+#-------------------------------------------------------------------
+
+Tumour_Fetal_pDat <- pDat_c1_fetal %>% 
+  filter(Condition != "NM")
+
+Tumour_Fetal_pDat_females <- Tumour_Fetal_pDat %>% 
+  filter(Sex == "Female")
+  
+Tumour_Fetal_eDat_females <- eNorm_c1 %>% 
+  dplyr::select(which(names(eNorm_c1) %in% Tumour_Fetal_pDat_females$Sample))
+#88
+
+#-------------------------------------------------------------------
+pDat_c1_fetal_females <- pDat_c1_fetal %>% 
+  filter(Sex == "Female")
+
+Condition_females <- pDat_c1_fetal_females %>% 
+  dplyr::select(Sample, Condition)
+
+Condition_females$Condition <- as.factor(Condition_females$Condition)
+
+#-------------------------------------------------------------------
+# WILCOXIN MANN-WHITNEY-U TEST FOR FEMALES
+#NM-Tumour
+
+pvals_NM_Tumour_females <- rep(NA, nrow(eNorm_c1)) 
+
+for(i in 1:nrow(NM_Tumour_eDat_females)){ 
+  
+ 
+  x <- as.data.frame(t(NM_Tumour_eDat_females[i,]))
+  
+  colnames(x)[1] <- "miRNA"
+  
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  
+  pvals_NM_Tumour_females[i] <- pvalue(a1) 
+  
+}
+
+pvals_NM_Tumour_females <- as.data.frame(pvals_NM_Tumour_females)
+
+# multiple testing correction
+pvals_NM_Tumour_females$pvals_NM_Tumour_adj <- p.adjust(pvals_NM_Tumour_females$pvals_NM_Tumour, method = "fdr")
 
 
 
+# NM-Fetal
+pvals_NM_Fetal_females <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(NM_Fetal_eDat_females)){ 
+  x <- as.data.frame(t(NM_Fetal_eDat_females[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_NM_Fetal_females[i] <- pvalue(a1) 
+}
+pvals_NM_Fetal_females <- as.data.frame(pvals_NM_Fetal_females)
+pvals_NM_Fetal_females$pvals_NM_Fetal_adj <- p.adjust(pvals_NM_Fetal_females$pvals_NM_Fetal, method = "fdr")
 
+# Tumour-Fetal
+pvals_Tumour_Fetal_females <- rep(NA, nrow(eNorm_c1)) 
+for(i in 1:nrow(Tumour_Fetal_eDat_females)){ 
+  x <- as.data.frame(t(Tumour_Fetal_eDat_females[i,]))
+  colnames(x)[1] <- "miRNA"
+  x <- x %>% 
+    rownames_to_column("Sample") %>% 
+    left_join(Condition, by = "Sample")
+  a1 <- wilcox_test(x$miRNA ~ x$Condition)
+  pvals_Tumour_Fetal_females[i] <- pvalue(a1) 
+}
+pvals_Tumour_Fetal_females <- as.data.frame(pvals_Tumour_Fetal_females)
 
-oncofetal_mirs_female <- 
+pvals_Tumour_Fetal_females$pvals_Tumour_Fetal_adj <- p.adjust(pvals_Tumour_Fetal_females$pvals_Tumour_Fetal, method = "fdr")
 
+# joining all 3
+pval_mirs_females <- as.data.frame(rownames(eNorm_c1))
+colnames(pval_mirs_females)[1] <- "miRNA"
+
+pval_mirs_females <- cbind(pval_mirs_females, pvals_NM_Tumour_females, pvals_NM_Fetal_females, pvals_Tumour_Fetal_females)
+pval_mirs_females <- pval_mirs_females %>% 
+  column_to_rownames("miRNA")
+
+pval_mirs_females <- round(pval_mirs_females, digits = 2)
+
+pval_mirs_females_round <- pval_mirs_females %>% 
+  rownames_to_column("miRNA")
+
+head(pval_mirs_females_round)
+
+#oncofetal mirs female
+
+oncofetal_mirs_female <- pval_mirs_females_round %>% 
+  filter(pvals_NM_Tumour_adj <= 0.05 & pvals_NM_Fetal_adj <= 0.05 & pvals_Tumour_Fetal_adj >= 0.05)
 
 nrow(oncofetal_mirs_female)
 
 head(oncofetal_mirs_female)
-
+#22
 
 ```
+```{r unique count}
 
-> CHECKPOINT: You should have 0 female-specific oncofetal renal miRNAs 
+#we have 84 male specific oncofetal miRNAs and 22 female specific oncofetal miRNAs 
 
+m_f_shared_oncofetal <- sum(oncofetal_mirs_female$miRNA %in% oncofetal_mirs_male$miRNA)
+
+#value = 16
+
+unique_female_oncofetal <- oncofetal_mirs_female %>% 
+  select(miRNA) %>% 
+  distinct() %>% 
+  anti_join(oncofetal_mirs_male, by = "miRNA") %>% 
+  nrow()
+
+cat("Number of unique renal oncofetal miRNAs in females =", unique_female_oncofetal)
+#6
+
+unique_male_oncofetal <- oncofetal_mirs_male %>% 
+  select(miRNA) %>% 
+  distinct() %>% 
+  anti_join(oncofetal_mirs_female, by = "miRNA") %>% 
+  nrow()
+
+cat("Number of unique renal oncofetal miRNAs in males =", unique_male_oncofetal)
+#68
+```
+
+
+
+> CHECKPOINT: You should have 22 female-specific oncofetal renal miRNAs 
+- check how many oncofetal mirs are common/shared between males and females
+  - should have 16
+- which ones are male unique and which ones are female unique?
+  - unique female : 6
+  - unique male : 68
 
 **Save the male-specific oncofetal miRNAs**
 
 ```{r, eval=FALSE}
 
-# write.xlsx(oncofetal_mirs_male, "oncofetal_mirs_male.xlsx")
+ # write.xlsx(oncofetal_mirs_male, "oncofetal_mirs_male.xlsx")
+ # write.xlsx(oncofetal_mirs_female, "oncofetal_mirs_female.xlsx")
+
 
 ```
 

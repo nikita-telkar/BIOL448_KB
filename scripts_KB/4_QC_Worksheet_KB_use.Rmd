@@ -292,8 +292,8 @@ eFil_1_10 <- eFil_fetal_filtered %>%
   rownames_to_column("miRNA")
   
 
-# eDat <- eDat %>% 
-#   rownames_to_column("miRNA")
+ eDat <- eDat %>% 
+   rownames_to_column("miRNA")
 
  eFil <- eFil_1_10 %>% 
   dplyr::select (miRNA) %>% 
@@ -447,7 +447,6 @@ colnames(filtered_mature_df) <- c("target")
 require(dplyr)
 data <- semi_join(eDat,filtered_mature_df, by = c(miRNA = "target"))
 row.names(data) <- data$gene
-
 
 data2 <- data %>% 
   mutate(Sum = rowSums(select_if(., is.numeric))) %>% 
@@ -680,7 +679,7 @@ c2_fetal_cols <- all_cols[colnames(eDat_matrix) %in% pDat_c2_fetal$Sample]
 c1_fetal_matrix <- eDat_matrix[, c1_cols]
 c2_fetal_matrix <- eDat_matrix[, c2_cols]
 
-norm <- DGEList(counts = eDat_matrix, samples = pDat$Sample, genes = eNorm)
+#norm <- DGEList(counts = eDat_matrix, samples = pDat$Sample, genes = eNorm)
 
  #splitting eDat_matrix because otherwise i get this error:
 # Error in DGEList(counts = eDat_matrix, samples = pDat_c1_fetal$Sample,  : 
