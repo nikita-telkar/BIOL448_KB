@@ -1,0 +1,412 @@
+---
+title: "KIRC: Survival Analysis" 
+author: "Nikita Telkar"
+date: "April 2023"
+output: 
+  html_document: 
+    keep_md: yes 
+    toc: true  
+    toc_depth: 4
+    toc_float: 
+      collapsed: false 
+      smooth_scroll: true
+    theme: flatly  
+    highlight: haddock
+---
+
+***
+
+### 0.0 Introduction  
+
+Here, we're going to plot the survival estimates of the oncofetal miRNAs we discovered in Script 5.  
+
+***  
+
+### 1.0 Loading Packages and Data  
+
+Loading all of our packages:  
+
+```{r packages, error=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+# rmarkdown packages
+library(knitr) 
+library(rmarkdown)
+
+# data wrangling packages
+library(tidyverse)
+library(janitor)
+
+# data loading packages
+library(readxl) 
+library(openxlsx)
+library(here)
+
+
+# setting global script options - i.e, parameters/arguents that will be applied to all chunks, without having to explicity specify them each time
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = FALSE)
+
+```
+
+Reading in data:  
+
+```{r data}
+
+pDat <- read_excel("KIRC_pDat_replicates_removed.xlsx")
+eDat <- read_rds("KIRC_eDat_replicates_removed.RDS")
+mDat <- read_rds("KIRC_mDat.RDS")
+
+eNorm_c1 <- read_rds("KIRC_eNorm_c1.RDS")
+eNorm_c2 <- read_rds("KIRC_eNorm_c2.RDS")
+
+pval_mirs <-read_excel("pval_mirs.xlsx")
+oncofetal_mirs_male <- read_excel("oncofetal_mirs_male.xlsx")
+
+```
+
+**Add your choice of font available at [Google Fonts](https://fonts.google.com/), and make your own customized ggplot2 theme**. We will now use this theme option for all future plots  
+
+```{r theme-and-colpal}
+
+library(showtext)
+library(extrafont)
+knitr::opts_chunk$set(fig.showtext = TRUE, fig_retina = 1) # needed to render show_text
+
+
+font_add_google("Open Sans", "Sans")
+
+colpal <- list(Condition = c(`Fetal` = "#ECB576", `NM` = "#115363", `Tumour` = "#A34237"),
+               Sex = c(`Male` = "#E05D5D", `Female` = "#ffb708"),
+               Self_reported_race = c(`Black or African American` = "#9BBC49", 
+                                      `Asian` = "#5B8D33", 
+                                      `White` = "#286E16", 
+                                      `Not Reported` = "#666666"))
+
+my_theme <- theme_minimal() +
+  theme(plot.title = element_text(family = "Sans", size = 14),
+        plot.subtitle = element_text(family = "Sans", size = 12),
+        legend.text = element_text(family = "Sans", size = 10),
+        axis.title = element_text(family = "Sans", size = 14),
+        axis.text = element_text(family = "Sans", size = 12))
+
+
+# needed to bind ggplot and our custom font
+showtext_auto()
+
+```
+
+To plot the survival curves, we need two major variables:  
+
+
+- `Expression` - a binary variable signifiying expression of each miRNA for each sample as being either high or low expression  
+- `Time` measurement - here, either days to death since diagnosis for the deceased patients, or days to last follow up for the patients who were still alive at the end of the study  
+- `Status` - alive or deceased  
+
+We don't have either of the above 3 variables, but we can make the Expression variable, and download the Time and Status from online databases  
+
+*** 
+
+### 2.0 Median Expression  
+
+For Expression, a general guide is to take the median expression of a miRNA (across all the samples) and signify whether expression is high or low per sample  
+
+```{r enorm1-median}
+
+library(BiocGenerics)
+
+pDat_Tumour_c1 <- pDat %>% 
+  filter(Condition == "Tumour") %>% 
+  filter(cluster_group == 1)
+
+eNorm_median_c1 <- eNorm_c1 %>% 
+  dplyr::select(pDat_Tumour_c1$Sample) %>%  # as we only use tumour samples in plotting survival
+  mutate(Median = rowMedians(as.matrix(eNorm_c1))) %>% 
+  dplyr::select(Median, everything())
+
+eNorm_median_c1 <- eNorm_median_c1 %>% 
+  rownames_to_column("miRNA") %>% 
+  pivot_longer(cols = -c(Median, miRNA), names_to = "Sample", values_to = "Reads") %>% 
+  mutate(Expression = case_when(
+    Reads < Median ~ "Low", 
+    Reads >= Median ~ "High"))
+
+```
+
+***
+
+### 3.0 cDat
+
+At this [link](https://www.cbioportal.org/study/clinicalData?id=kirc_tcga_pan_can_atlas_2018), you can find all of the clinical information about the KIRC dataset, but there exists a TCGA-specific R package that we can use to pull that information. We'll make a new df named cDat to store that info, and then join to pDat  
+
+```{r cdat}
+
+# BiocManager::install("RTCGA")
+# BiocManager::install("RTCGA.clinical")
+library(RTCGA)
+library(RTCGA.clinical)
+
+cDat <- survivalTCGA(KIRC.clinical)
+
+cDat <- cDat %>% 
+  dplyr::rename("Time" = "times",
+                "Status" = "patient.vital_status", 
+                "Case_ID" = "bcr_patient_barcode") %>% 
+  dplyr::select(Case_ID, everything())
+
+
+```
+
+
+```{r}
+
+cDat <- cDat %>% 
+  left_join(pDat, by = "Case_ID")
+
+```
+
+### 4.0 Survival Analysis
+
+Now, we saw that we when we included both the sexes in our unstratified analysis, none of the miRNAs showed expression by our oncofetal criteria   
+
+```{r}
+
+oncofetal_mirs <- pval_mirs %>% 
+  filter(pvals_NM_Tumour_adj <= 0.05 & pvals_NM_Fetal_adj <= 0.05 & pvals_Tumour_Fetal_adj >= 0.05)
+
+nrow(oncofetal_mirs)
+
+```
+
+But, we did get 85 oncofetal miRNAs in male (and 0 in females) when we applied a sex-stratified approach  
+
+```{r}
+
+nrow(oncofetal_mirs_male)
+
+```
+
+
+
+Let's now plot the survival estimates of these 85 miRNAs:  
+
+First, we'll join the median expression and and Time and Status variables that we obtained
+
+```{r}
+
+surv_vars <- oncofetal_mirs_male %>% 
+  dplyr::select(miRNA) %>% 
+  left_join(eNorm_median_c1, by = "miRNA") %>% 
+  left_join(cDat, by = "Sample") %>% 
+  dplyr::select(Sample, Expression, Time, Status, miRNA, Sex, Self_reported_race) %>% 
+  filter(!(is.na(Status)))
+
+surv_vars$Expression <- as.factor(surv_vars$Expression)
+
+surv_vars <- as.data.frame(surv_vars)
+
+```
+
+
+#### 4.1 Overall Survival
+
+Survival curve of all 85 together (85 miRNA signature)  
+
+
+```{r surv-plot-all}
+
+library(survival)
+
+# equation to estimate survival overall by expression
+sfit_all <- survfit(data = surv_vars, Surv(Time, Status) ~ Expression)
+
+
+ggsurvplot(sfit_all, 
+           conf.int = FALSE, 
+           pval = TRUE, 
+           surv.median.line = "hv",
+           xscale = 365,
+           break.time.by = 3675/10,
+           axes.offset = FALSE,
+           palette = c("#C01E58", "#53AF6F"),
+           ggtheme = my_theme)
+
+
+```
+
+
+Okay, so the 85-miRNA signature in all patients together (males and females) is not significant - which is not suprising, as we did not actually get any oncofetal miRNAs in the unstratified approcah.  
+
+
+#### 4.2 Survival by Sex
+
+Investigating the survival separately by sex:  
+
+```{r surv-plot-sex}
+
+sfit_sex <- survfit(data = surv_vars, Surv(Time, Status) ~ Expression + Sex)
+
+p1 <- ggsurvplot(sfit_sex, 
+           conf.int = FALSE, 
+           pval = TRUE, 
+           surv.median.line = "hv",
+           xscale = 365,
+           break.time.by = 3675/10,
+           axes.offset = FALSE,
+           palette = c("#855d91", "#ff9439", "#c2a1c6", "#ffb87f"),
+           legend = "bottom",
+           ggtheme = my_theme)
+
+p1$plot +
+  theme(legend.title = element_blank()) +
+  guides(colour = guide_legend(nrow = 2))
+
+```
+
+
+Okay, we do see that the survival is showing significant difference when we split the male and female samples. Let's make the same exact graph, but split it into two, one each for males and females  
+
+
+```{r surv-plot-sex-separated, echo=FALSE}
+
+ggsurv_sex <- ggsurvplot_group_by(sfit_all, 
+                                  surv_vars, 
+                                  group.by = "Sex", 
+                                  pval = TRUE, 
+                                  surv.median.line = "hv", 
+                                  xscale = 365, 
+                                  break.time.by = 3675/10, 
+                                  axes.offset = FALSE,
+                                  palette = c("#C01E58", "#53AF6F"),
+                                  ggtheme = my_theme)
+
+
+ggsurv_sex$`Sex.Female::Expression`$plot
+ggsurv_sex$`Sex.Male::Expression`$plot
+
+```
+
+Okay, so what the two distinct and unsignificant survial plots are telling us in contrast to the plot above that has both the sex together is that while there is a significant difference in the survival using these 85 miRNAs overall in males and females, when investigated specifically within males or females, there is no difference 
+
+Again, not suprising, as gene-signatures can or cannot be significant  
+
+We'll investigate the survival of each of the 85 miRNAs separately now in males only, as we obtained these miRNAs from the male-stratified analysis,and check which of these are significany individually at predicting survival  
+
+
+### 4.3 Survival for individual miRNAs in Males  
+
+
+1. Extracting the survival p-values for each of the 85  
+
+```{r surv-pvals-males}
+
+# selecting only the 15 significant miRNAs, and splitting up our survival dataframe by miRNA, so that each miRNA is its own dataframe  
+surv_dat_list_males <- surv_vars %>% 
+  filter(miRNA %in% oncofetal_mirs_male$miRNA) %>% 
+  filter(Sex == "Male") %>%  # selecting only the male samples, as our 85 miRNAs came from male-only samples  
+  split(as.factor(.$miRNA))
+
+
+# making an empty list where we will store each of our pvalues per miRNA
+sfit_pval_85_males <- list()
+
+
+# a for-loop to iteratively apply the same exact function (here, extracting the pvalue from the survival output) over each miRNA df from the list above
+for(i in seq_along(surv_dat_list_males)){
+  
+  sfit <- survfit(data = surv_dat_list_males[[i]], Surv(Time, Status) ~ Expression)
+  
+  pval <- surv_pvalue(sfit)
+  
+  # assigining the pvalue to the empty list that we made
+  sfit_pval_85_males[[i]] <- pval
+  
+}
+
+# adding the names from the miRNA survival dataframe to the corresponding pvalues
+names(sfit_pval_85_males) <- names(surv_dat_list_males)
+
+```
+
+2. Selecting the miRNAs gic=ving significant association between expression and survival probability
+
+```{r sig-pvals-males}
+
+# binding all pvals into one df
+sfit_pval_85_males <- sfit_pval_85_males %>% 
+  bind_rows() %>% 
+  mutate(miRNA = names(surv_dat_list_males))
+
+
+# selecting miRNAs with pvalu of <= 0.05
+sfit_pval_sig_male <- sfit_pval_85_males %>% 
+  filter(pval <= 0.05)
+
+sfit_pval_sig_male
+
+```
+
+
+Okay, so we have 13 of the 85 miRNAs that seem to have a significant p-value for expression of that miRNA and survival probability  
+
+
+3. Making survival plots for the 13 miRNAs with significant survival curves  
+
+```{r surv-sig-males, fig.height=6, fig.width=8}
+# change the fig.height and fig.width if plot does not render in good dimensions 
+
+
+# selecting only the 15 significant miRNAs, and splitting up our survival dataframe by miRNA, so that each miRNA is its own dataframe  
+surv_dat_list_males_13 <- surv_vars %>% 
+  filter(miRNA %in% sfit_pval_sig_male$miRNA) %>% 
+  filter(Sex == "Male") %>%  # selecting only the male samples, as our 85 miRNAs came from male-only samples  
+  split(as.factor(.$miRNA))
+
+# making an empty list where we will store each of our plots
+surv_dat_plots_male_13 <- list()
+
+
+# a for-loop to iteratively apply the same exact function (here, making the survival plot) over each miRNA df from the list above
+for(i in seq_along(surv_dat_list_males_13)){
+  
+  sfit <- survfit(data = surv_dat_list_males_13[[i]], Surv(Time, Status) ~ Expression)
+  
+  g1 <- ggsurvplot(sfit, 
+           conf.int = FALSE, 
+           pval = TRUE, 
+           surv.median.line = "hv",
+           xscale = 365,
+           break.time.by = 3675/10,
+           axes.offset = FALSE,
+           palette = c("#C01E58", "#53AF6F"),
+           ggtheme = my_theme)
+  
+  # appending plot title to name of the df, which is the name of the miRNA in this case
+  g1$plot$labels$title <- (names(surv_dat_list_males_13[i]))
+  
+  # assigining the plot to the empty list that we made
+  surv_dat_plots_male_13[[i]] <- g1
+  
+}
+
+# adding the names from the miRNA survival dataframe to the corresponding plots
+names(surv_dat_plots_male_13) <- names(surv_dat_list_males_13)
+
+surv_dat_plots_male_13
+
+```
+
+
+
+**Now check within eNorm_c2 if we get these exact 13 miRNAs as having significant association with survival probability in males - i.e., are these 13 miRNAs that we found replicable in a different dataset?**  
+
+
+```{r}
+
+
+```
+
+
+***
+
+End of Script  
+
+***
