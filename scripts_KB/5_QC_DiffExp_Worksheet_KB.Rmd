@@ -443,10 +443,9 @@ ggarrange(b1, d1, b2, d2, b3, d3, nrow = 3, ncol = 2)
 Overwrite the previously saved eFil and eNorm objects 
 
 ```{r save, eval=FALSE}
-# HAVE NOT BEEN SAVED OR OVERWRITTEN YET - REVIEW WITH NIKITA FIRST 
 # write_rds(eFil, here::here("data", "eFil.rds"))
-# write_rds(eNorm_c1, here::here("data", "eNorm_c1.rds"))
-# write_rds(eNorm_c2, here::here("data", "eNorm_c2.rds"))
+ # write_rds(eNorm_c1, here::here("data", "KIRC_eNorm_c1.rds"))
+ # write_rds(eNorm_c2, here::here("data", "KIRC_eNorm_c2.rds"))
 ```
 
 
@@ -996,7 +995,7 @@ head(pval_mirs)
 
 ```{r, eval=FALSE}
 
-# write.xlsx(pval_mirs, "pval_mirs.xlsx")
+ write.xlsx(pval_mirs, here::here ("data", "pval_mirs.xlsx"))
 
 ```
 
@@ -1183,7 +1182,7 @@ pvals_Tumour_Fetal_males$pvals_Tumour_Fetal_adj <- p.adjust(pvals_Tumour_Fetal_m
 ```
 
 
-```{r join-pval-wilcox, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
+```{r join-pval-wilcox-p2, error=FALSE, warning=FALSE, message=FALSE, cache = TRUE}
 
 
 # joining all 3
@@ -1386,9 +1385,8 @@ cat("Number of unique renal oncofetal miRNAs in males =", unique_male_oncofetal)
 **Save the male-specific oncofetal miRNAs**
 
 ```{r, eval=FALSE}
-
- # write.xlsx(oncofetal_mirs_male, "oncofetal_mirs_male.xlsx")
- # write.xlsx(oncofetal_mirs_female, "oncofetal_mirs_female.xlsx")
+# write.xlsx(oncofetal_mirs_male, here::here ("data", "oncofetal_mirs_male.xlsx"))
+# write.xlsx(oncofetal_mirs_female, here::here ("data", "oncofetal_mirs_female.xlsx"))
 
 
 ```
